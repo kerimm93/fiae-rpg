@@ -1,0 +1,2178 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>FI Skill Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Lato:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#1a1a2e; --bg-mid:#16213e; --surface:#1e2a4a; --surface-2:#162038; --surface-3:#243555;
+  --border:#2a4a7f; --border-light:#3a6aaf;
+  --ink:#e8e8f0; --ink-light:#9999bb; --ink-dim:#555577;
+  --gold:#ffb347; --gold-light:#ffd580;
+  --purple:#9b59b6; --purple-light:#c39bd3; --purple-dark:#7d3c98;
+  --green:#2ecc71; --green-dark:#1a8a4a;
+  --red:#e74c3c; --red-dark:#c0392b;
+  --blue:#3498db; --blue-dark:#2176ae;
+  --teal:#1abc9c; --teal-dark:#16a085;
+  --cyan:#00d4ff;
+  --pixel:'Press Start 2P',monospace;
+  --body:'Lato',sans-serif;
+  --fs-content:16px; --fs-label:11px; --fs-btn:14px; --fs-filter:13px;
+  --touch-min:44px; --radius:8px;
+}
+@media(min-width:640px){ :root{ --fs-content:17px; --touch-min:40px; } }
+@media(min-width:1024px){ :root{ --fs-content:15px; --touch-min:36px; } }
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{min-height:100vh;}
+body{
+  background:var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 50%,rgba(155,89,182,0.08) 0%,transparent 60%),
+    radial-gradient(ellipse at 80% 20%,rgba(52,152,219,0.06) 0%,transparent 50%);
+  font-family:var(--body);color:var(--ink);font-size:var(--fs-content);
+}
+#app{max-width:1200px;margin:0 auto;padding:12px;}
+
+/* HEADER */
+header{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.hamburger{background:none;border:1px solid var(--border);border-radius:6px;padding:8px;
+  cursor:pointer;min-width:var(--touch-min);min-height:var(--touch-min);
+  display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;}
+.hamburger span{display:block;width:20px;height:2px;background:var(--ink-light);border-radius:1px;}
+.htbox{flex:1;background:linear-gradient(135deg,#2d1b69,#1a0a4a);border:2px solid var(--purple);
+  box-shadow:0 0 20px rgba(155,89,182,0.3);border-radius:6px;padding:8px 16px;text-align:center;}
+.htbox h1{font-family:var(--pixel);color:var(--gold);font-size:8px;line-height:1.8;
+  text-shadow:0 0 10px rgba(255,179,71,0.5);}
+.htbox .sub{font-family:var(--body);font-weight:300;color:var(--ink-light);
+  font-size:12px;letter-spacing:3px;text-transform:uppercase;}
+
+/* SIDEBAR */
+#sidebar{position:fixed;top:0;left:0;width:260px;height:100vh;
+  background:var(--bg-mid);border-right:1px solid var(--border);
+  z-index:300;transform:translateX(-100%);transition:transform .25s ease;
+  display:flex;flex-direction:column;overflow-y:auto;}
+#sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:299;}
+.sidebar-header{padding:16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;}
+.sidebar-header .title{font-family:var(--pixel);font-size:7px;color:var(--gold);}
+.sidebar-close{background:none;border:none;color:var(--ink-light);font-size:20px;cursor:pointer;
+  min-width:var(--touch-min);min-height:var(--touch-min);display:flex;align-items:center;justify-content:center;}
+.sidebar-nav{padding:8px 0;}
+.sidebar-nav-item{display:flex;align-items:center;gap:12px;padding:12px 20px;
+  background:none;border:none;width:100%;text-align:left;cursor:pointer;
+  font-family:var(--body);font-size:var(--fs-content);color:var(--ink-light);
+  min-height:var(--touch-min);transition:all .15s;}
+.sidebar-nav-item:hover{background:var(--surface);color:var(--ink);}
+.sidebar-nav-item.active{background:var(--surface);color:var(--gold);border-left:3px solid var(--gold);}
+.sidebar-nav-item .nav-icon{font-size:18px;width:24px;text-align:center;}
+.sidebar-nav-item .nav-label{font-weight:700;}
+
+/* STAT CARDS */
+.stat-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px;text-align:center;}
+.sc .sico{font-size:20px;display:block;margin-bottom:4px;}
+.sc .sval{font-family:var(--pixel);font-size:12px;color:var(--gold);display:block;margin-bottom:2px;
+  text-shadow:0 0 8px rgba(255,179,71,0.4);}
+.sc .slbl{font-family:var(--body);font-size:11px;font-weight:700;color:var(--ink-light);
+  text-transform:uppercase;letter-spacing:0.5px;}
+
+/* XP */
+.xp-wrap{margin-bottom:12px;}
+.xp-track{background:rgba(0,0,0,0.4);border:1px solid var(--border);height:18px;
+  border-radius:9px;overflow:hidden;}
+.xp-fill{height:100%;background:linear-gradient(90deg,var(--purple-dark),var(--gold));
+  transition:width .6s ease;border-radius:9px;}
+.xp-lbl{font-family:var(--body);font-size:12px;font-weight:700;color:var(--ink-light);
+  margin-top:3px;letter-spacing:1px;}
+
+/* PANEL */
+.panel-wrap{background:var(--surface-2);border:1px solid var(--border);
+  box-shadow:0 4px 24px rgba(0,0,0,0.4);padding:16px;min-height:300px;
+  border-radius:0 0 8px 8px;}
+.panel{display:none;}
+.panel.active{display:block;animation:fi .15s ease;}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* MOBILE TAB BAR (shown when sidebar closed) */
+.tab-bar{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px 8px 0 0;overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;}
+.tab-bar::-webkit-scrollbar{display:none;}
+.tab-btn{flex-shrink:0;padding:10px 14px;font-family:var(--body);font-weight:700;
+  font-size:12px;background:transparent;border:none;color:var(--ink-light);
+  cursor:pointer;min-height:44px;transition:all .15s;white-space:nowrap;}
+.tab-btn:hover{color:var(--ink);}
+.tab-btn.active{color:var(--gold);border-bottom:2px solid var(--gold);}
+
+/* QUEST SECTION */
+.qs{background:var(--surface);border:1px solid var(--border);
+  box-shadow:0 2px 12px rgba(0,0,0,0.25);padding:14px 16px;
+  margin-bottom:12px;border-radius:var(--radius);}
+.qh{font-family:var(--body);font-weight:800;font-size:13px;color:var(--gold);
+  text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;}
+.qh .qi{font-size:16px;}
+
+/* STEPS */
+.step-track{display:flex;border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:14px;}
+.si{flex:1;padding:8px 4px;text-align:center;background:rgba(0,0,0,0.2);
+  border-right:1px solid var(--border);}
+.si:last-child{border-right:none;}
+.si.active{background:rgba(255,179,71,0.15);}
+.si.done{background:rgba(46,204,113,0.15);}
+.si .sn{font-family:var(--pixel);font-size:7px;color:var(--ink-dim);display:block;}
+.si.active .sn{color:var(--gold);}
+.si.done .sn{color:var(--green);}
+.si .st{font-family:var(--body);font-size:11px;color:var(--ink-dim);display:block;margin-top:2px;font-weight:700;}
+.si.active .st{color:var(--ink-light);}
+.si.done .st{color:var(--green);}
+
+/* BUTTONS */
+.btn{font-family:var(--body);font-weight:700;font-size:var(--fs-btn);
+  padding:10px 18px;border:none;border-radius:var(--radius);cursor:pointer;
+  min-height:var(--touch-min);box-shadow:0 2px 8px rgba(0,0,0,0.3);
+  display:inline-flex;align-items:center;gap:6px;transition:all .15s;}
+.btn:active{transform:translateY(1px);box-shadow:none;}
+.btn:disabled{opacity:0.38;cursor:not-allowed;}
+.btn-q{background:linear-gradient(135deg,var(--gold),#e8960a);color:#1a0a00;}
+.btn-m{background:linear-gradient(135deg,var(--purple),var(--purple-dark));color:white;}
+.btn-v{background:linear-gradient(135deg,var(--green),var(--green-dark));color:white;}
+.btn-s{background:linear-gradient(135deg,var(--blue),var(--blue-dark));color:white;}
+.btn-t{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:white;}
+.btn-d{background:linear-gradient(135deg,var(--red),var(--red-dark));color:white;}
+.btn-sm{font-size:calc(var(--fs-btn) - 2px);padding:7px 13px;min-height:calc(var(--touch-min) - 8px);}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;}
+
+/* INPUTS */
+input[type="text"],input[type="date"],input[type="password"],textarea,select{
+  background:rgba(0,0,0,0.25);border:1px solid var(--border);color:var(--ink);
+  font-family:var(--body);font-size:var(--fs-content);padding:10px 14px;
+  min-height:var(--touch-min);border-radius:6px;width:100%;}
+input[type="text"]:focus,input[type="date"]:focus,input[type="password"]:focus,
+textarea:focus,select:focus{outline:none;border-color:var(--purple);
+  box-shadow:0 0 0 2px rgba(155,89,182,0.2);}
+textarea::placeholder,input::placeholder{color:var(--ink-dim);}
+select option{background:var(--surface-2);}
+textarea{resize:vertical;min-height:90px;}
+label{font-family:var(--body);font-size:var(--fs-label);font-weight:700;
+  color:var(--ink-light);text-transform:uppercase;letter-spacing:0.5px;
+  display:block;margin-bottom:5px;margin-top:12px;}
+.slabel{font-family:var(--body);font-size:var(--fs-label);font-weight:700;
+  color:var(--ink-light);text-transform:uppercase;letter-spacing:0.5px;
+  display:block;margin-bottom:5px;}
+input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
+
+/* SCROLL BOX */
+.scroll-box{background:rgba(0,0,0,0.3);border:1px solid var(--border);
+  border-left:3px solid var(--purple);padding:12px 14px;
+  font-family:var(--body);font-size:14px;line-height:1.7;color:var(--ink-light);
+  white-space:pre-wrap;max-height:200px;overflow-y:auto;
+  margin-top:10px;border-radius:0 6px 6px 0;}
+.scroll-box::-webkit-scrollbar{width:4px;}
+.scroll-box::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* NOTICES */
+.notice{background:rgba(255,179,71,0.07);border-left:3px solid var(--gold);
+  padding:10px 14px;font-family:var(--body);font-size:13px;
+  color:var(--ink-light);line-height:1.6;border-radius:0 6px 6px 0;margin-bottom:10px;}
+.notice strong{color:var(--ink);}
+.notice.info{background:rgba(52,152,219,0.07);border-left-color:var(--blue);}
+.notice.danger{background:rgba(231,76,60,0.1);border-left-color:var(--red);}
+.notice.success{background:rgba(46,204,113,0.07);border-left-color:var(--green);}
+
+/* FILTER PILLS */
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.fp{font-family:var(--body);font-weight:600;font-size:var(--fs-filter);
+  padding:7px 14px;border:1px solid var(--border);border-radius:20px;
+  background:var(--surface);color:var(--ink-light);cursor:pointer;
+  min-height:var(--touch-min);display:inline-flex;align-items:center;transition:all .15s;}
+.fp:hover{border-color:var(--purple-light);color:var(--ink);}
+.fp.active{background:var(--purple-dark);border-color:var(--purple);color:white;}
+
+/* TABLES */
+.skill-table{width:100%;border-collapse:collapse;font-family:var(--body);font-size:var(--fs-content);}
+.skill-table th{font-family:var(--body);font-size:var(--fs-label);font-weight:800;
+  letter-spacing:0.5px;text-transform:uppercase;color:var(--ink-light);
+  background:rgba(0,0,0,0.3);padding:10px 12px;text-align:left;
+  border-bottom:1px solid var(--border);}
+.skill-table td{padding:10px 12px;border-bottom:1px solid rgba(42,74,127,0.3);vertical-align:middle;}
+.skill-table tr:hover td{background:rgba(155,89,182,0.06);}
+
+/* BADGES */
+.fach-badge{display:inline-block;padding:3px 10px;font-family:var(--body);
+  font-size:11px;font-weight:700;border-radius:12px;border:1px solid;}
+.lvl-badge{display:inline-block;padding:3px 10px;font-family:var(--body);
+  font-size:11px;font-weight:700;border-radius:12px;}
+.lv0{background:rgba(85,85,119,0.3);color:var(--ink-light);border:1px solid var(--ink-dim);}
+.lv1{background:rgba(52,152,219,0.2);color:var(--blue);border:1px solid var(--blue-dark);}
+.lv2{background:rgba(46,204,113,0.2);color:var(--green);border:1px solid var(--green-dark);}
+.lv3{background:rgba(155,89,182,0.2);color:var(--purple-light);border:1px solid var(--purple);}
+.lv4{background:rgba(255,179,71,0.2);color:var(--gold);border:1px solid #e8960a;}
+.mini-xp{display:inline-block;background:rgba(0,0,0,0.4);border:1px solid var(--border);
+  height:8px;width:80px;border-radius:4px;overflow:hidden;}
+.mini-xp-f{height:100%;background:linear-gradient(90deg,var(--purple-dark),var(--gold));transition:width .5s;}
+
+/* PLATFORM TILES & MODE TILES */
+.platform-row{display:flex;gap:8px;margin:8px 0 12px;}
+.plat-tile,.mode-tile{flex:1;background:var(--surface-3);border:1px solid var(--border);
+  border-radius:var(--radius);padding:10px 8px;cursor:pointer;text-align:center;
+  transition:all .15s;position:relative;}
+.plat-tile:hover,.mode-tile:hover{border-color:var(--purple-light);}
+.plat-tile.sel,.mode-tile.sel{border-color:var(--purple);background:rgba(155,89,182,0.15);
+  box-shadow:0 0 12px rgba(155,89,182,0.3);}
+.plat-tile .pico,.mode-tile .mico{font-size:20px;display:block;margin-bottom:4px;}
+.plat-tile .pname,.mode-tile .mname{font-family:var(--body);font-weight:700;font-size:12px;
+  color:var(--ink);display:block;}
+.plat-tile .pdesc,.mode-tile .mdesc{font-size:11px;color:var(--ink-light);margin-top:3px;line-height:1.3;}
+.mode-tile .mdel{position:absolute;top:4px;right:4px;background:none;border:none;
+  cursor:pointer;font-size:14px;color:var(--red);padding:2px 5px;}
+
+/* MODE GRID */
+.mode-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin:8px 0;}
+
+/* TRAINING GRID */
+.training-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:8px;max-height:260px;overflow-y:auto;padding:2px;margin:8px 0;}
+.sk-tile{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .15s;
+  min-height:var(--touch-min);}
+.sk-tile:hover{border-color:var(--purple-light);}
+.sk-tile.sel{border-color:var(--green);background:rgba(46,204,113,0.1);}
+.sk-check{width:18px;height:18px;border:2px solid var(--border);border-radius:4px;
+  background:transparent;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;}
+.sk-tile.sel .sk-check{background:var(--green);border-color:var(--green);color:white;}
+.sk-name{font-family:var(--body);font-size:14px;font-weight:700;color:var(--ink);line-height:1.2;}
+.sk-meta{font-size:11px;color:var(--ink-light);margin-top:2px;}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.75);
+  backdrop-filter:blur(4px);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:12px;}
+.modal-bg.hidden{display:none;}
+.modal-box{background:var(--surface-2);border:1px solid var(--border);
+  border-radius:12px;padding:20px;width:min(500px,96vw);
+  max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5);}
+.modal-title{font-family:var(--body);font-weight:800;font-size:15px;
+  color:var(--gold);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.5px;}
+
+/* GRIDS */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.farmer-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:640px){
+  .stat-bar{grid-template-columns:1fr 1fr;}
+  .grid-2,.farmer-row,.platform-row{grid-template-columns:1fr;flex-direction:column;}
+  .mode-grid{grid-template-columns:repeat(2,1fr);}
+}
+
+/* EMPTY STATE */
+.empty-st{text-align:center;padding:40px 20px;font-family:var(--body);
+  font-size:15px;color:var(--ink-dim);line-height:2;}
+
+/* DIVIDER */
+.pdiv{height:1px;background:var(--border);margin:14px 0;}
+
+/* TOAST */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--surface-2);
+  border:1px solid var(--purple);border-radius:10px;
+  box-shadow:0 4px 20px rgba(0,0,0,0.5);padding:12px 18px;
+  font-family:var(--body);font-weight:700;font-size:14px;color:var(--ink);
+  transform:translateY(80px);opacity:0;transition:all .25s;z-index:999;
+  max-width:300px;line-height:1.5;}
+#toast.show{transform:translateY(0);opacity:1;}
+
+/* WK TOOLTIP */
+#wk-tooltip{display:none;position:fixed;background:var(--surface-2);
+  border:1px solid var(--purple);padding:8px 12px;
+  font-family:var(--body);font-size:13px;color:var(--ink);
+  pointer-events:none;z-index:50;max-width:220px;line-height:1.5;
+  border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.4);}
+
+/* LEGEND ROW */
+.legend-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:10px 0 14px;}
+.legend-item{display:flex;align-items:center;gap:5px;font-family:var(--body);
+  font-size:12px;color:var(--ink-light);}
+.legend-dot{width:14px;height:14px;border-radius:3px;flex-shrink:0;}
+
+/* WOCHENKAMPAGNE DAY CARDS */
+.wp-day-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  gap:10px;padding:12px 0;border-bottom:1px solid rgba(42,74,127,0.3);}
+.wp-day-row:last-child{border-bottom:none;}
+
+/* GIST STATUS */
+.gist-status{display:inline-flex;align-items:center;gap:6px;font-family:var(--body);
+  font-size:12px;font-weight:700;padding:4px 10px;border-radius:12px;}
+.gist-ok{background:rgba(46,204,113,0.15);color:var(--green);}
+.gist-off{background:rgba(85,85,119,0.2);color:var(--ink-dim);}
+</style>
+</head>
+
+<body>
+
+<!-- SIDEBAR OVERLAY -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sidebar-header">
+    <span class="title">SKILL TRACKER</span>
+    <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+  </div>
+  <nav class="sidebar-nav" id="sidebar-nav-items"></nav>
+</div>
+
+<div id="app">
+
+  <header>
+    <button class="hamburger" onclick="openSidebar()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="htbox">
+      <h1>FACHINFORMATIKER</h1>
+      <span class="sub">Skill Log v5.0</span>
+    </div>
+  </header>
+
+  <div class="stat-bar">
+    <div class="sc"><span class="sico">⚔️</span><span class="sval" id="stat-total">0</span><span class="slbl">Skills</span></div>
+    <div class="sc"><span class="sico">📚</span><span class="sval" id="stat-faecher">0</span><span class="slbl">Fächer</span></div>
+    <div class="sc"><span class="sico">⭐</span><span class="sval" id="stat-avg">—</span><span class="slbl">Ø Level</span></div>
+    <div class="sc"><span class="sico">🏆</span><span class="sval" id="stat-mastered">0</span><span class="slbl">Meister</span></div>
+  </div>
+
+  <div class="xp-wrap">
+    <div class="xp-track"><div class="xp-fill" id="gxp" style="width:0%"></div></div>
+    <div class="xp-lbl" id="gxp-lbl">0 XP — Lehrling</div>
+  </div>
+
+  <div class="tab-bar" id="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('ta',this)">① Tagesabschluss</button>
+    <button class="tab-btn" onclick="switchTab('tr',this)">② Training</button>
+    <button class="tab-btn" onclick="switchTab('sl',this)">③ Skill-Liste</button>
+    <button class="tab-btn" onclick="switchTab('sf',this)">④ Skill Farmer</button>
+    <button class="tab-btn" onclick="switchTab('sp',this)">⑤ Wochenkampagne</button>
+    <button class="tab-btn" onclick="switchTab('wk',this)">⑥ Weltenkarte</button>
+    <button class="tab-btn" onclick="switchTab('dt',this)">⚙ Daten</button>
+  </div>
+
+  <div class="panel-wrap">
+
+    <div id="panel-ta" class="panel active">
+      <div class="step-track">
+        <div class="si active" id="si1"><span class="sn">I</span><span class="st">Prompt</span></div>
+        <div class="si" id="si2"><span class="sn">II</span><span class="st">Ergebnis</span></div>
+        <div class="si" id="si3"><span class="sn">III</span><span class="st">Abgleich</span></div>
+        <div class="si" id="si4"><span class="sn">IV</span><span class="st">Neue Skills</span></div>
+        <div class="si" id="si5"><span class="sn">V</span><span class="st">Fertig</span></div>
+      </div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">📜</span> Schritt I — Tages-Prompt generieren</div>
+        <div class="notice">Kopiere den Prompt in deinen Mitschriebe-Chat. GPT listet alle Skills des Tages auf.</div>
+        <div id="p1box" class="scroll-box" style="display:none"></div>
+        <div class="btn-row">
+          <button class="btn btn-q" onclick="genP1()">▶ Prompt generieren</button>
+          <button class="btn btn-s" id="cp1" onclick="copyP(1)" disabled>⧉ Kopieren</button>
+        </div>
+      </div>
+
+      <div class="qs locked" id="qs2">
+        <div class="qh"><span class="qi">✍️</span> Schritt II — GPT-Ergebnis einfügen</div>
+        <div class="notice">Füge die rohe Skill-Liste aus deinem GPT-Chat hier ein.</div>
+        <textarea id="raw-in" rows="5" placeholder="Hier GPT-Ergebnis einfügen..."></textarea>
+        <div class="btn-row"><button class="btn btn-q" onclick="toStep3()">▶ Weiter</button></div>
+      </div>
+
+      <div class="qs locked" id="qs3">
+        <div class="qh"><span class="qi">⚖️</span> Schritt III — Abgleich-Prompt</div>
+        <div class="notice">Kopiere in einen <strong>neuen</strong> GPT-Chat. Filtert echte Neuheiten heraus. Die bisherige Skill-Liste wird automatisch eingebettet.</div>
+        <div id="p2box" class="scroll-box" style="display:none"></div>
+        <div class="btn-row">
+          <button class="btn btn-m" onclick="genP2()">▶ Abgleich-Prompt</button>
+          <button class="btn btn-s" id="cp2" onclick="copyP(2)" disabled>⧉ Kopieren</button>
+        </div>
+      </div>
+
+      <div class="qs locked" id="qs4">
+        <div class="qh"><span class="qi">⚔️</span> Schritt IV — Neue Skills eintragen</div>
+        <div class="notice">Format: <strong>SkillName | Fach | Kurzbeschreibung</strong> — eine Zeile pro Skill.</div>
+        <textarea id="new-in" rows="5" placeholder="Subnetting | Netzwerktechnik | IP in Teilnetze aufteilen&#10;for-Schleife | Programmierung | Wiederholende Codeausführung"></textarea>
+        <div style="margin-top:10px;">
+          <span class="slabel">Datum des Unterrichtstages</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+            <input type="text" id="ta-datum" oninput="syncTextToPicker()" style="min-width:110px;max-width:130px;" placeholder="TT.MM.JJJJ">
+            <input type="date" id="ta-datepicker" onchange="syncDateFromPicker()" style="min-width:130px;">
+            <button class="btn btn-q btn-sm" onclick="setTaDatumToday()">Heute</button>
+          </div>
+        </div>
+        <div class="btn-row"><button class="btn btn-v" onclick="saveSkills()">✓ Skills einschreiben</button></div>
+      </div>
+    </div>
+
+    <!-- ② TRAINING -->
+
+
+    <div id="panel-tr" class="panel">
+
+      <!-- SKILL SELECTION -->
+      <div class="qs">
+        <div class="qh"><span class="qi">⚔️</span> Skills für die Kampagne wählen</div>
+        <div class="filter-row" id="tfb"><button class="fp active" onclick="fTrain('alle',this)">Alle</button></div>
+        <div class="training-grid" id="tgrid"></div>
+      </div>
+
+      <!-- MODE SELECTION -->
+      <div class="qs">
+        <div class="qh"><span class="qi">🧙</span> Kampagnenmodus wählen</div>
+        <div class="notice info">Wähle einen Modus. Jeder Modus formt den Charakter des Meisters, der dich durch die Sitzung führt.</div>
+        <div class="mode-grid" id="mode-grid"></div>
+        <div class="btn-row">
+          <button class="btn btn-m btn-sm" onclick="openModeModal()">＋ Eigenen Modus erstellen</button>
+        </div>
+      </div>
+
+      <!-- PLATFORM SELECTION -->
+      <div class="qs">
+        <div class="qh"><span class="qi">🗺️</span> Plattform wählen</div>
+        <div class="platform-row">
+          <div class="plat-tile sel" id="plat-claude" onclick="selPlat('claude')">
+            <span class="pico">✨</span>
+            <span class="pname">Claude Artifact</span>
+            <div class="pdesc">Erstellt eine interaktive App direkt im Chat — Buttons, Eingaben, Animationen möglich</div>
+          </div>
+          <div class="plat-tile" id="plat-chatgpt" onclick="selPlat('chatgpt')">
+            <span class="pico">💬</span>
+            <span class="pname">ChatGPT Dialog</span>
+            <div class="pdesc">Klassische Dialogform — Frage & Antwort im Chat, kein externes Tool nötig</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GENERATE -->
+      <div class="qs">
+        <div class="qh"><span class="qi">📜</span> Kampagnen-Prompt</div>
+        <div id="p3box" class="scroll-box" style="display:none"></div>
+        <div class="btn-row">
+          <button class="btn btn-q" onclick="genTrainP()">▶ Kampagnen-Prompt generieren</button>
+          <button class="btn btn-s" id="cp3" onclick="copyP(3)" disabled>⧉ Kopieren</button>
+        </div>
+      </div>
+
+      <!-- REPORT -->
+      <div class="qs">
+        <div class="qh"><span class="qi">📋</span> Kampagnen-Bericht einreichen</div>
+        <div class="notice">Format: <strong>SkillName | Level (0–4) | Kommentar</strong> — eine Zeile pro Skill.</div>
+        <textarea id="rep-in" rows="5" placeholder="Subnetting | 2 | Grundlagen verstanden&#10;for-Schleife | 3 | Sicher in einfachen Fällen"></textarea>
+        <div class="btn-row"><button class="btn btn-v" onclick="saveReport()">✓ Charakterwerte updaten</button></div>
+      </div>
+
+    </div>
+
+    <!-- ③ SKILL-LISTE -->
+
+
+    <div id="panel-sl" class="panel">
+      <div class="filter-row" id="sfb"><button class="fp active" onclick="fSkills('alle',this)">Alle</button></div>
+      <div style="overflow-x:auto;">
+        <table class="skill-table">
+          <thead><tr><th>Skill</th><th>Fach</th><th>Level</th><th>XP</th><th>Datum</th></tr></thead>
+          <tbody id="stbody"></tbody>
+        </table>
+      </div>
+      <div id="stempty" class="empty-st" style="display:none;">⚔️ Noch keine Skills in deiner Rolle.<br>Starte den Tagesabschluss!</div>
+    </div>
+
+    <!-- ④ SKILL FARMER -->
+
+
+    <div id="panel-sf" class="panel">
+      <div class="notice info">🌾 <strong>Skill Farmer:</strong> Füge Folien, Skript-Texte, Zusammenfassungen oder Notizen ein. Der Farmer extrahiert automatisch alle relevanten Skills und bereitet sie für den Abgleich vor.</div>
+
+      <div class="farmer-row">
+        <div class="qs">
+          <div class="qh"><span class="qi">📄</span> Material konfigurieren</div>
+          <span class="slabel">Quellentyp</span>
+          <select id="sf-type" style="width:100%; margin-bottom:10px;">
+            <option value="folie">Präsentationsfolien</option>
+            <option value="skript">Skript / Lehrtext</option>
+            <option value="notizen">Eigene Mitschrift</option>
+            <option value="aufgaben">Aufgabenblatt / Übungen</option>
+            <option value="mixed">Gemischtes Material</option>
+          </select>
+          <span class="slabel">Eingabemodus</span>
+          <div class="platform-row" style="gap:6px; margin-bottom:10px;">
+            <div class="plat-tile sel" id="sf-mode-text" onclick="sfSelMode('text')" style="flex:1;">
+              <span class="pico" style="font-size:16px;">📝</span>
+              <span class="pname">Nur Text</span>
+              <div class="pdesc">Text hier einfügen</div>
+            </div>
+            <div class="plat-tile" id="sf-mode-both" onclick="sfSelMode('both')" style="flex:1;">
+              <span class="pico" style="font-size:16px;">📎</span>
+              <span class="pname">Text + Anhang</span>
+              <div class="pdesc">Prompt + Text kopieren, Dateien anhängen</div>
+            </div>
+            <div class="plat-tile" id="sf-mode-attach" onclick="sfSelMode('attach')" style="flex:1;">
+              <span class="pico" style="font-size:16px;">🖼️</span>
+              <span class="pname">Nur Anhang</span>
+              <div class="pdesc">Prompt kopieren, nur Dateien anhängen</div>
+            </div>
+          </div>
+          <span class="slabel">Fach (optional)</span>
+          <input type="text" id="sf-fach" placeholder="z.B. Netzwerktechnik" style="width:100%; margin-bottom:10px;">
+          <div id="sf-text-area">
+            <span class="slabel">Material-Text</span>
+            <textarea id="sf-material" rows="8" placeholder="Hier Text aus Folien, Skript, Mitschrift einfügen..."></textarea>
+          </div>
+          <div id="sf-attach-notice" class="notice" style="display:none; border-left-color:var(--blue); background:rgba(26,92,140,0.08);">
+            📎 Prompt kopieren → neuen Claude-Chat öffnen → Prompt einfügen → Dateien (PDFs, Screenshots, Bilder) anhängen → senden.
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-q" onclick="genFarmerP()">▶ Farmer-Prompt generieren</button>
+            <button class="btn btn-s" id="cpf" onclick="copyP('f')" disabled>⧉ Kopieren</button>
+          </div>
+          <div id="pfbox" class="scroll-box" style="display:none; margin-top:10px;"></div>
+        </div>
+
+        <div class="qs">
+          <div class="qh"><span class="qi">🌾</span> Geerntete Skills einfügen</div>
+          <div class="notice">Füge das Ergebnis aus dem Chat hier ein. Danach kannst du direkt den Abgleich-Prompt generieren, um Duplikate zu entfernen.</div>
+          <textarea id="sf-result" rows="6" placeholder="SkillName | Fach | Kurzbeschreibung&#10;..."></textarea>
+          <div class="btn-row">
+            <button class="btn btn-m" onclick="genFarmerAbgleich()">▶ Abgleich-Prompt</button>
+            <button class="btn btn-s" id="cpfa" onclick="copyP('fa')" disabled>⧉ Kopieren</button>
+          </div>
+          <div id="pfabox" class="scroll-box" style="display:none; margin-top:10px;"></div>
+          <div class="pdiv"></div>
+          <div class="notice" style="border-left-color:var(--green); background:rgba(30,124,58,0.07);">Nach dem Abgleich-Chat: Neue Skills direkt in Schritt IV des Tagesabschlusses einfügen, oder hier:</div>
+          <textarea id="sf-new" rows="4" placeholder="Nur neue Skills (nach Abgleich)..."></textarea>
+          <div class="btn-row">
+            <button class="btn btn-v" onclick="saveFarmerSkills()">✓ Skills einschreiben</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑤ WOCHENKAMPAGNE -->
+
+
+    <div id="panel-sp" class="panel">
+
+      <div class="notice info">🗺️ <strong>Wochenkampagne:</strong> Trage den Wochenplan ein. Pro Unterrichtstag erscheint ein Knopf — ein Klick kopiert den fertigen Startprompt für den Mitschriebe-Chat.</div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">📝</span> Wochenplan eingeben</div>
+        <div class="notice">Format wie gewohnt — Text aus dem Stundenplan-Chat einfügen.</div>
+        <textarea id="wp-input" rows="12" placeholder="## Montag, 30.03.2026&#10;- 08:00–09:30 → Theorie: ITT-Net-IS (Microsoft Teams)&#10;- 11:10–12:40 → Theorie: BGP-MuKb (Microsoft Teams)&#10;&#10;## Dienstag, 31.03.2026&#10;- frei&#10;&#10;## Mittwoch, 01.04.2026&#10;- 08:00–09:30 → Theorie: FIAE-AnwP-GUI (Microsoft Teams)"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-q" onclick="parseWochenplan()">&#9658; Kampagne laden</button>
+        </div>
+      </div>
+
+      <div class="qs" id="wp-days-box" style="display:none;">
+        <div class="qh"><span class="qi">🗓️</span> Tages-Prompts</div>
+        <div id="wp-days"></div>
+      </div>
+
+    </div>
+
+    <!-- ⑥ WELTENKARTE -->
+
+
+    <div id="panel-wk" class="panel">
+      <canvas id="wk-canvas" style="width:100%;image-rendering:pixelated;border:4px solid var(--wood-dark);box-shadow:4px 4px 0 var(--ink);display:block;cursor:pointer;" height="520"></canvas>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:5px;"><div style="width:14px;height:14px;background:#1a1a2e;border:1px solid #333;"></div><span style="font-family:var(--display);font-size:15px;color:var(--ink-light);">Nebel (unbekannt)</span></div>
+        <div style="display:flex;align-items:center;gap:5px;"><div style="width:14px;height:14px;background:#4a4060;border:1px solid #7a6a90;"></div><span style="font-family:var(--display);font-size:15px;color:var(--ink-light);">Erkundet (Stundenplan)</span></div>
+        <div style="display:flex;align-items:center;gap:5px;"><div style="width:14px;height:14px;background:#2d6a2d;border:1px solid #4aaa4a;"></div><span style="font-family:var(--display);font-size:15px;color:var(--ink-light);">Cleared (Mitschrieb fertig)</span></div>
+        <div style="display:flex;align-items:center;gap:5px;"><div style="width:14px;height:14px;background:#b8860b;border:2px solid #ffd700;"></div><span style="font-family:var(--display);font-size:15px;color:var(--ink-light);">Gemeistert (Skills trainiert)</span></div>
+      </div>
+
+      <div id="wk-tooltip" style="display:none;position:fixed;background:var(--wood-dark);border:2px solid var(--gold);padding:8px 12px;font-family:var(--display);font-size:16px;color:var(--parchment);pointer-events:none;z-index:50;max-width:220px;line-height:1.5;box-shadow:3px 3px 0 var(--ink);"></div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">📜</span> Stundenplan importieren</div>
+        <div class="notice">Füge deinen Stundenplan-Text ein. Ein Prompt wird generiert — das Ergebnis aus dem Chat ordnet jeden Tag automatisch dem richtigen Dungeon zu.</div>
+        <textarea id="wk-import-raw" rows="6" placeholder="## Montag, 30.03.2026&#10;- 08:00–09:30 → Theorie: ITT-Net-IS&#10;- 11:10–12:40 → Theorie: BGP-MuKb&#10;&#10;## Dienstag, 31.03.2026&#10;- frei"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-q" onclick="wkGenImportPrompt()">▶ Import-Prompt generieren</button>
+          <button class="btn btn-s" id="wk-copy-prompt" onclick="wkCopyImportPrompt()" disabled>⧉ Kopieren</button>
+        </div>
+        <div id="wk-import-prompt-box" class="scroll-box" style="display:none;margin-top:10px;"></div>
+      </div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">⚔️</span> Import-Ergebnis einfügen</div>
+        <div class="notice">Format: <strong>TT.MM.JJJJ | dungeon-id | dungeon-id</strong> — eine Zeile pro Tag. Mehrere Dungeons pro Tag möglich.</div>
+        <textarea id="wk-import-result" rows="5" placeholder="18.03.2026 | itt-net&#10;19.03.2026 | bgp-mukb | itt-net&#10;26.03.2026 | itt-net&#10;27.03.2026 | itt-net | fiae-anwp-gui"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-v" onclick="wkImportResult()">✓ Tage importieren</button>
+        </div>
+      </div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">⚙️</span> Dungeon verwalten</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input type="text" id="wk-new-dungeon-name" placeholder="Neuer Dungeon-Name" style="flex:2;min-width:160px;">
+          <input type="text" id="wk-new-dungeon-fach" placeholder="Fach-Kürzel" style="flex:1;min-width:110px;">
+          <button class="btn btn-m btn-sm" onclick="wkAddDungeon()">+ Dungeon</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⚙ DATEN -->
+
+
+    <div id="panel-dt" class="panel">
+      <div class="grid-2" style="margin-bottom:12px;">
+        <div class="qs">
+          <div class="qh"><span class="qi">💾</span> CSV Export</div>
+          <div class="notice">Exportiert alle Skills als CSV-Datei.</div>
+          <div class="btn-row"><button class="btn btn-q" onclick="exportCSV()">⬇ Herunterladen</button></div>
+        </div>
+        <div class="qs">
+          <div class="qh"><span class="qi">📂</span> CSV Import</div>
+          <div class="notice">Importiert eine gespeicherte CSV-Datei.</div>
+          <div class="btn-row">
+            <button class="btn btn-m" onclick="document.getElementById('cimport').click()">⬆ Laden</button>
+            <input type="file" id="cimport" accept=".csv" style="display:none" onchange="importCSV(this)">
+          </div>
+        </div>
+      </div>
+      <div class="qs">
+        <div class="qh"><span class="qi">☁️</span> GitHub Gist Sync</div>
+        <div class="notice info">Automatische Cloud-Sicherung über ein privates GitHub Gist. Einmalig einrichten — dann läuft alles automatisch.</div>
+        <div class="notice" style="font-size:12px;margin-bottom:8px;">
+          1. Gehe zu <strong>github.com/settings/tokens</strong> → Generate new token (classic) → nur <strong>gist</strong>-Berechtigung → kopieren<br>
+          2. Erstelle ein privates Gist auf <strong>gist.github.com</strong> (Inhalt: <code>{}</code>) → Gist-ID aus der URL kopieren
+        </div>
+        <label>GitHub Token</label>
+        <input type="password" id="gist-token" placeholder="ghp_xxxxxxxxxxxx">
+        <label>Gist ID</label>
+        <input type="text" id="gist-id" placeholder="abc123def456...">
+        <div class="btn-row" style="margin-top:10px;">
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:0;cursor:pointer;">
+            <input type="checkbox" id="gist-auto" style="width:auto;min-height:auto;">
+            <span style="font-size:13px;color:var(--ink-light);font-weight:700;">Auto-Sync (alle 30s)</span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-s btn-sm" onclick="gistSaveSettings()">✓ Speichern</button>
+          <button class="btn btn-q btn-sm" onclick="gistPush(false)">⬆ Hochladen</button>
+          <button class="btn btn-m btn-sm" onclick="gistPull(false)">⬇ Herunterladen</button>
+          <button class="btn btn-t btn-sm" onclick="gistMerge()">⊕ Merge</button>
+        </div>
+      </div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">⚙️</span> Einstellungen</div>
+        <div style="margin-bottom:10px;">
+          <label style="font-family:var(--pixel);font-size:7px;color:var(--ink-light);display:block;margin-bottom:6px;">AUSBILDUNGSBERUF</label>
+          <input type="text" id="pref-beruf" style="width:100%;" value="Fachinformatiker – Anwendungsentwicklung">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-family:var(--pixel);font-size:7px;color:var(--ink-light);display:block;margin-bottom:6px;">KURS / SCHULE (optional)</label>
+          <input type="text" id="pref-kurs" style="width:100%;" placeholder="z.B. BBS Musterstadt 2024A">
+        </div>
+        <div class="btn-row"><button class="btn btn-v" onclick="savePrefs()">✓ Speichern</button></div>
+      </div>
+      <div class="qs">
+        <div class="qh"><span class="qi">📦</span> Vollständiges Backup</div>
+        <div class="notice">Exportiert <strong>alles</strong>: Skills, Custom-Modi, Einstellungen. Als JSON-Datei speichern und bei Bedarf wiederherstellen.</div>
+        <div class="btn-row">
+          <button class="btn btn-q" onclick="exportJSON()">⬇ JSON-Backup herunterladen</button>
+          <button class="btn btn-m" onclick="document.getElementById('json-import').click()">⬆ JSON-Backup laden</button>
+          <input type="file" id="json-import" accept=".json" style="display:none" onchange="importJSON(this)">
+        </div>
+      </div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">☠️</span> Gefahrenzone</div>
+        <div class="notice danger">Löscht alle Skills und Kampagnen-Modi unwiderruflich.</div>
+        <div class="btn-row"><button class="btn btn-d" onclick="resetData()">✕ Alles löschen</button></div>
+      </div>
+    </div>
+
+  </div><!-- /panel-wrap -->
+</div><!-- /app -->
+
+<!-- MODAL: Custom Mode -->
+<div class="modal-bg hidden" id="mode-modal">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title">⚔ NEUEN MODUS ERSTELLEN</div>
+    <label>MODUS-NAME (kurz)</label>
+    <input type="text" id="m-name" placeholder="z.B. Orakel-Befragung">
+    <label>ICON (Emoji)</label>
+    <input type="text" id="m-icon" placeholder="🔮" style="max-width:80px;">
+    <label>KURZBESCHREIBUNG</label>
+    <input type="text" id="m-desc" placeholder="z.B. Das Orakel befragt mich tief und geduldig">
+    <label>PROMPT-TEMPLATE</label>
+    <div class="notice" style="font-size:15px; margin-bottom:8px;">Verfügbare Platzhalter: <strong>{skills}</strong> (die gewählten Skills), <strong>{beruf}</strong> (dein Ausbildungsberuf), <strong>{platform}</strong> (claude/chatgpt)</div>
+    <textarea id="m-prompt" rows="8" placeholder="Du bist ein weises Orakel in einer alten Bibliothek...&#10;&#10;Heute lernenden Abenteurer: {beruf}&#10;Zu meisternde Zaubersprüche: {skills}&#10;&#10;Deine Aufgabe: ..."></textarea>
+    <div class="btn-row">
+      <button class="btn btn-v" onclick="saveMode()">✓ Modus speichern</button>
+      <button class="btn btn-d" onclick="closeModeModal()">✕ Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="wk-tooltip"></div>
+
+<script>
+
+const LV = ['Lehrling','Geselle','Experte','Meister','Legende'];
+
+const DEFAULT_MODES = [
+  {
+    id:'quiz', icon:'⚡', name:'Prüfungsarena',
+    desc:'Harter Quiz-Stil — der Meister stellt direkte Fragen',
+    builtin:true,
+    prompt:`Du bist ein strenger Prüfungsmeister in der Arena des Wissens. Der Abenteurer {beruf} tritt vor dich.
+
+Zu prüfende Fähigkeiten: {skills}
+
+Führe eine harte Prüfungssession durch:
+- Stelle pro Skill 2–3 direkte Fragen ohne Hinweise
+- Antworte nach jeder Antwort nur mit RICHTIG ⚔ oder FALSCH ✗ und der korrekten Erklärung
+- Kein Schritt zurück, kein Erbarmen — nur Wissen zählt
+- Halte Punktestand: X/Y Fragen korrekt
+
+Am Ende: Kampfbericht im Format:
+SkillName | Level (0-4) | Bewertung
+=== KAMPAGNEN-BERICHT ===
+SkillName | Level (0-4) | Feedback
+=== ENDE ===
+(Diesen Block direkt in die App kopieren)
+
+Beginne sofort mit der ersten Prüfungsfrage.`
+  },
+  {
+    id:'tutor', icon:'🧙', name:'Weiser Mentor',
+    desc:'Tutor-Modus — erklärt geduldig in eigenen Worten',
+    builtin:true,
+    prompt:`Du bist ein weiser Zauberer und Mentor in einer alten Bibliothek. Der Schüler {beruf} sitzt vor dir.
+
+Zu erklärende Zaubersprüche (Konzepte): {skills}
+
+Erkläre jeden Skill auf diese Weise:
+- Beginne mit einer kurzen Alltagsanalogie oder einer Geschichte aus der Welt
+- Erkläre das Konzept dann präzise und praxisnah
+- Gib ein konkretes Beispiel (z.B. Code, Netzwerkdiagramm, Befehl)
+- Frage am Ende jedes Abschnitts: "Verstehst du, Schüler? Oder soll ich tiefer graben?"
+
+Passe die Tiefe an meine Antworten an. Schreibe warm und geduldig — aber präzise.
+
+Am Ende erstelle einen Bericht:
+SkillName | Level (0-4) | Einschätzung
+=== KAMPAGNEN-BERICHT ===
+SkillName | Level (0-4) | Feedback
+=== ENDE ===
+(Diesen Block direkt in die App kopieren)`
+  },
+  {
+    id:'socratic', icon:'🌀', name:'Socratisches Verhör',
+    desc:'Socratic — der Meister fragt, du denkst laut',
+    builtin:true,
+    prompt:`Du bist ein mysteriöser Philosoph-Magier, der durch Fragen Wissen hervorruft. Der Suchende: {beruf}.
+
+Zu erforschende Mysterien: {skills}
+
+Regeln des Verhörs:
+- Stelle NUR Fragen — gib nie direkt Antworten
+- Fange breit an ("Was weißt du darüber?") und bohre dann tiefer
+- Wenn ich falsch liege: frage weiter, bis ich selbst den Irrtum erkenne
+- Nutze Gegenfragen, Analogien, hypothetische Szenarien
+- Sprich wie ein weiser Magier: geheimnisvoll, aber präzise
+
+Am Ende des Gesprächs, wenn du ein Bild meines Wissens gewonnen hast:
+SkillName | Level (0-4) | Was du erkannt hast\n\nGib den Abschlussbericht am Ende in diesem Block aus (direkt kopierbar in die App):\n=== KAMPAGNEN-BERICHT ===\nSkillName | Level (0-4) | Feedback\n=== ENDE ===`
+  },
+  {
+    id:'scenario', icon:'🗡️', name:'Dungeon-Szenario',
+    desc:'Fehlerbehebung — ein Abenteuer mit echtem Problem',
+    builtin:true,
+    prompt:`Du bist ein Dungeon-Master. Der Abenteurer {beruf} betritt einen gefährlichen Dungeon.
+
+Die Dungeon-Herausforderungen basieren auf diesen Fähigkeiten: {skills}
+
+Erschaffe ein narratives Szenario:
+- Beschreibe eine konkrete technische Situation als Abenteuer (z.B. "Das Netzwerk-Schloss ist gefallen — Feind im System!")
+- Der Abenteurer muss echte technische Probleme lösen, um voranzukommen
+- Jede Lösung öffnet die nächste Tür
+- Gib Hinweise als "Dungeon-Geräusche" oder "alte Inschriften"
+- Reagiere auf meine Lösungsversuche: korrekt = Tür öffnet sich, falsch = neue Herausforderung
+
+Am Ende des Dungeons:
+SkillName | Level (0-4) | Bewährung im Dungeon\n\nGib den Abschlussbericht am Ende in diesem Block aus (direkt kopierbar in die App):\n=== KAMPAGNEN-BERICHT ===\nSkillName | Level (0-4) | Feedback\n=== ENDE ===`
+  }
+];
+
+var S = {
+  skills: [],
+  modes: [],
+  prefs: { beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:'' },
+  dungeons: null,
+  _lastExported: null
+};
+var LKEY = 'fi_rpg_v4';
+var GIST_TOKEN_KEY = 'fi_gist_token';
+var GIST_ID_KEY    = 'fi_gist_id';
+var GIST_AUTO_KEY  = 'fi_gist_auto';
+var GIST_FILE      = 'fi_skill_tracker_data.json';
+
+var sFilter='alle', tFilter='alle';
+var selSkills=new Set();
+var selMode='quiz';
+var selPlat_='claude';
+var Ps={1:'',2:'',3:'',f:'',fa:''};
+var editModeId=null;
+
+/* ─── PERSISTENCE ─── */
+function save(){
+  S._lastExported = new Date().toISOString();
+  try { localStorage.setItem(LKEY, JSON.stringify(S)); } catch(e){}
+  updateStats(); renderTable(); renderTGrid(); wkRender();
+  gistAutoSyncDebounced();
+}
+
+function load(){
+  // Try new key first, fall back to old keys for migration
+  var raw = localStorage.getItem(LKEY);
+  if(!raw) raw = localStorage.getItem('fi_rpg3');
+  if(!raw) raw = localStorage.getItem('fi_rpg2');
+  try { if(raw) S = JSON.parse(raw); } catch(e){}
+  // Ensure all fields have defaults
+  if(!S.skills)   S.skills = [];
+  if(!S.modes)    S.modes  = [];
+  if(!S.prefs)    S.prefs  = {beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:''};
+  if(!S.dungeons) S.dungeons = null;
+  var pb=document.getElementById('pref-beruf');
+  var pk=document.getElementById('pref-kurs');
+  if(pb) { pb.value=S.prefs.beruf||''; pk.value=S.prefs.kurs||''; }
+  updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters();
+}
+
+/* ─── UTILS ─── */
+function uid() { return String(Date.now()) + String(Math.random()).slice(2,8); }
+function todayDE() { return new Date().toLocaleDateString('de-DE'); }
+function esc(s) {
+  if(!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toast(m){
+  const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2600);
+}
+function today(){ return new Date().toLocaleDateString('de-DE'); }
+function fCol(f){
+  const P=[
+    {bg:'#1a5c8c',fg:'#f5e6c8',bd:'#2980b9'},{bg:'#1e7c3a',fg:'#f5e6c8',bd:'#27ae60'},
+    {bg:'#6c3483',fg:'#f5e6c8',bd:'#8e44ad'},{bg:'#8b5e3c',fg:'#f5e6c8',bd:'#a8723f'},
+    {bg:'#c0392b',fg:'#f5e6c8',bd:'#e74c3c'},{bg:'#d4a017',fg:'#2c1a0e',bd:'#f1c40f'},
+    {bg:'#2c3e50',fg:'#f5e6c8',bd:'#34495e'},
+  ];
+  let h=0; for(let c of (f||'')) h=(h*31+c.charCodeAt(0))%P.length;
+  return P[Math.abs(h)%P.length];
+}
+
+/* ─── STATS ─── */
+function updateStats(){
+  const ss=S.skills;
+  document.getElementById('stat-total').textContent=ss.length;
+  document.getElementById('stat-faecher').textContent=new Set(ss.map(s=>s.fach)).size;
+  document.getElementById('stat-mastered').textContent=ss.filter(s=>(s.level||0)>=4).length;
+  if(ss.length>0){
+    const avg=ss.reduce((a,s)=>a+(s.level||0),0)/ss.length;
+    document.getElementById('stat-avg').textContent=avg.toFixed(1);
+  } else { document.getElementById('stat-avg').textContent='—'; }
+  const xp=ss.reduce((a,s)=>a+(s.xp||0),0);
+  const mx=Math.max(ss.length*5,10);
+  document.getElementById('gxp').style.width=Math.min(100,(xp/mx)*100)+'%';
+  const rank=xp<5?'Lehrling':xp<20?'Geselle':xp<50?'Experte':xp<100?'Meister':'Legende';
+  document.getElementById('gxp-lbl').textContent=xp+' XP — '+rank;
+}
+
+/* ─── TABS ─── */
+function switchTab(name,btn){
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  var panel = document.getElementById('panel-'+name);
+  if(panel) panel.classList.add('active');
+  if(btn && btn.classList) btn.classList.add('active');
+}
+
+/* ─── STEPS ─── */
+function setStep(n){
+  const rom=['I','II','III','IV','V'];
+  for(let i=1;i<=5;i++){
+    const el=document.getElementById('si'+i);
+    el.classList.remove('active','done');
+    el.querySelector('.sn').textContent=i<n?'✓':rom[i-1];
+    if(i<n) el.classList.add('done'); else if(i===n) el.classList.add('active');
+  }
+  const map={3:'qs3',4:'qs4'};
+  Object.entries(map).forEach(([k,id])=>{
+    const el=document.getElementById(id);
+    if(el) el.classList.toggle('locked',parseInt(k)>n);
+  });
+  // Schritt 2 immer zugänglich
+  const qs2el=document.getElementById('qs2');
+  if(qs2el) qs2el.classList.remove('locked');
+}
+
+/* ─── TAGESABSCHLUSS ─── */
+function syncDateFromPicker(){
+  var picker = document.getElementById('ta-datepicker');
+  var field = document.getElementById('ta-datum');
+  if(!picker || !picker.value || !field) return;
+  // picker value is YYYY-MM-DD, convert to DD.MM.YYYY
+  var parts = picker.value.split('-');
+  if(parts.length === 3) field.value = parts[2]+'.'+parts[1]+'.'+parts[0];
+}
+
+function setTaDatumToday(){
+  var field = document.getElementById('ta-datum');
+  if(field) field.value = today();
+  syncTextToPicker();
+}
+
+function syncTextToPicker(){
+  var field = document.getElementById('ta-datum');
+  var picker = document.getElementById('ta-datepicker');
+  if(!field || !picker) return;
+  var val = field.value.trim();
+  var parts = val.split('.');
+  if(parts.length === 3 && parts[2].length === 4){
+    picker.value = parts[2]+'-'+parts[1].padStart(2,'0')+'-'+parts[0].padStart(2,'0');
+  }
+}
+
+function genP1(){
+  const beruf=S.prefs.beruf||'Fachinformatiker';
+  const p=`Du bist mein Lernassistent für die Umschulung zum ${beruf}.
+
+Aufgabe: Analysiere alle Canvas-Dateien und den Chat-Verlauf (das Datum steht im Chat selbst).
+
+Liste alle Fachbegriffe, Konzepte, Techniken, Befehle und Methoden auf, die heute besprochen wurden.
+
+Format (exakt, eine Zeile pro Skill):
+SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+
+Regeln:
+- Erste Zeile: DATUM: [Datum des Unterrichtstages aus dem Chat, z.B. DATUM: 18.03.2026] — nicht das heutige Datum
+- Dann: Nur konkrete, lernbare Skills
+- Fach aus Kontext ableiten (z.B. Netzwerktechnik, Programmierung, IT-Sicherheit, WiSo)
+- Keine Duplikate, keine Nummerierung
+- Nur DATUM-Zeile + Liste ausgeben`;
+  Ps[1]=p;
+  const b=document.getElementById('p1box'); b.textContent=p; b.style.display='block';
+  document.getElementById('cp1').disabled=false;
+  setStep(2); toast('📜 Prompt generiert!');
+}
+function toStep3(){
+  const v=document.getElementById('raw-in').value.trim();
+  if(!v){toast('Bitte erst GPT-Ergebnis einfügen!');return;}
+  setStep(3); genP2();
+}
+function genP2(){
+  const raw=document.getElementById('raw-in').value.trim();
+  const ex=S.skills.map(s=>s.name).join(', ')||'(noch keine Skills)';
+  const p=`Du bist mein Skill-Tracker.
+
+Bereits bekannte Skills in meiner Datenbank:
+${ex}
+
+Heute gelernte Skills (roh):
+${raw}
+
+Aufgabe: Welche Skills sind WIRKLICH NEU — also noch nicht (oder nicht als Synonym) in der Datenbank?
+
+Format (exakt, eine Zeile pro neuem Skill):
+SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+
+Regeln:
+- Nur neue Skills ausgeben
+- Keine Duplikate, keine Nummerierung
+- Nur die Liste`;
+  Ps[2]=p;
+  const b=document.getElementById('p2box'); b.textContent=p; b.style.display='block';
+  document.getElementById('cp2').disabled=false;
+  setStep(4); toast('⚖️ Abgleich-Prompt bereit!');
+}
+function saveSkills(){
+  const raw=document.getElementById('new-in').value.trim();
+  if(!raw){toast('Bitte Skills einfügen!');return;}
+  // Priority: DATUM: line in text > date field > today
+  const datumFromText = extractDateFromSkillResult(raw);
+  const datumField = document.getElementById('ta-datum');
+  const datumFromField = datumField && datumField.value.trim() ? datumField.value.trim() : null;
+  const finalDatum = datumFromText || datumFromField || null;
+  const added=ingestSkillLines(raw, finalDatum||today());
+  const cleared = finalDatum ? wkAutoSetCleared(finalDatum) : false;
+  if(cleared){
+    toast('⚔️ '+added+' Skills — Tag '+finalDatum+' Cleared! ✓');
+  } else if(finalDatum){
+    toast('⚔️ '+added+' Skills eingeschrieben ('+finalDatum+')');
+  } else {
+    toast('⚔️ '+added+' Skills eingeschrieben');
+  }
+  save(); updateFilters();
+  document.getElementById('new-in').value='';
+  setStep(5);
+  const s5=document.getElementById('si5'); s5.classList.remove('active'); s5.classList.add('done'); s5.querySelector('.sn').textContent='✓';
+}
+function ingestSkillLines(raw, extractedDate){
+  let added=0;
+  raw.split('\n').map(l=>l.trim()).filter(Boolean).forEach(line=>{
+    if(/^DATUM:/i.test(line)) return; // skip date line
+    const p=line.split('|').map(x=>x.trim());
+    if(p.length<2||!p[0]) return;
+    if(S.skills.some(s=>s.name.toLowerCase()===p[0].toLowerCase())) return;
+    S.skills.push({id:Date.now()+Math.random(),name:p[0],fach:p[1]||'Allgemein',beschreibung:p[2]||'',datum:extractedDate||today(),level:0,xp:0,sessions:0});
+    added++;
+  });
+  return added;
+}
+
+function extractDateFromSkillResult(raw){
+  // Look for DATUM: TT.MM.JJJJ line
+  var match = raw.match(/DATUM:\s*(\d{1,2}\.\d{1,2}\.\d{4})/i);
+  return match ? match[1] : null;
+}
+
+/* ─── COPY ─── */
+function copyP(n){
+  const text=Ps[n]; if(!text) return;
+  navigator.clipboard.writeText(text).then(()=>toast('✓ In Zwischenablage!')).catch(()=>{
+    const ta=document.createElement('textarea'); ta.value=text;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    toast('✓ In Zwischenablage!');
+  });
+}
+
+/* ─── FILTERS ─── */
+function updateFilters(){
+  const faecher=[...new Set(S.skills.map(s=>s.fach))].sort();
+  const sfb=document.getElementById('sfb');
+  sfb.innerHTML='<button class="fp active" onclick="fSkills(\'alle\',this)">Alle</button>';
+  faecher.forEach(f=>{ const b=document.createElement('button'); b.className='fp'; b.textContent=f; b.onclick=function(){fSkills(f,this);}; sfb.appendChild(b); });
+  const tfb=document.getElementById('tfb');
+  tfb.innerHTML='<button class="fp active" onclick="fTrain(\'alle\',this)">Alle</button>';
+  faecher.forEach(f=>{ const b=document.createElement('button'); b.className='fp'; b.textContent=f; b.onclick=function(){fTrain(f,this);}; tfb.appendChild(b); });
+}
+function fSkills(f,btn){
+  sFilter=f;
+  document.querySelectorAll('#sfb .fp').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderTable();
+}
+function fTrain(f,btn){
+  tFilter=f;
+  document.querySelectorAll('#tfb .fp').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderTGrid();
+}
+
+/* ─── SKILL TABLE ─── */
+function renderTable(){
+  const tbody=document.getElementById('stbody');
+  const empty=document.getElementById('stempty');
+  const fl=sFilter==='alle'?S.skills:S.skills.filter(s=>s.fach===sFilter);
+  if(!fl.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  tbody.innerHTML=fl.map(s=>{
+    const c=fCol(s.fach); const lvl=Math.min(s.level||0,4); const xpPct=Math.min(100,(s.xp||0)*20);
+    return `<tr>
+      <td><strong style="font-family:var(--display);font-size:19px;">${s.name}</strong>
+        <div style="font-family:var(--display);font-size:15px;color:var(--ink-light);">${s.beschreibung||''}</div></td>
+      <td><span class="fach-badge" style="background:${c.bg};color:${c.fg};border-color:${c.bd};">${s.fach}</span></td>
+      <td><span class="lvl-badge lv${lvl}">${LV[lvl]}</span></td>
+      <td><div class="mini-xp"><div class="mini-xp-f" style="width:${xpPct}%"></div></div>
+        <div style="font-family:var(--display);font-size:14px;color:var(--ink-light);">${s.sessions||0}x</div></td>
+      <td style="font-family:var(--display);font-size:16px;color:var(--ink-light);white-space:nowrap;">${s.datum}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ─── TRAINING GRID ─── */
+function renderTGrid(){
+  const g=document.getElementById('tgrid');
+  const fl=tFilter==='alle'?S.skills:S.skills.filter(s=>s.fach===tFilter);
+  if(!fl.length){ g.innerHTML='<div class="empty-st" style="grid-column:1/-1;padding:20px;">Keine Skills vorhanden.</div>'; return; }
+  g.innerHTML=fl.map(s=>{
+    const sel=selSkills.has(s.id); const c=fCol(s.fach);
+    return `<div class="sk-tile ${sel?'sel':''}" onclick="togSk(${s.id})">
+      <div class="sk-check">${sel?'✓':''}</div>
+      <div><div class="sk-name">${s.name}</div>
+        <div class="sk-meta" style="color:${c.bg};">${s.fach} · ${LV[Math.min(s.level||0,4)]}</div></div>
+    </div>`;
+  }).join('');
+}
+function togSk(id){
+  if(selSkills.has(id)) selSkills.delete(id); else selSkills.add(id);
+  renderTGrid();
+}
+
+/* ─── MODES ─── */
+function allModes(){ return [...DEFAULT_MODES, ...S.modes]; }
+
+function renderModes(){
+  const g=document.getElementById('mode-grid');
+  const modes=allModes();
+  g.innerHTML=modes.map(m=>`
+    <div class="mode-tile ${selMode===m.id?'sel':''}" onclick="selModeId('${m.id}')">
+      ${!m.builtin?`<button class="mdel" onclick="event.stopPropagation();editMode('${m.id}')">✏</button>`:''}
+      <span class="mico">${m.icon}</span>
+      <div class="mname">${m.name}</div>
+      <div class="mdesc">${m.desc}</div>
+    </div>`).join('');
+}
+function selModeId(id){
+  selMode=id;
+  renderModes();
+}
+
+/* ─── PLATFORM ─── */
+function selPlat(p){
+  selPlat_=p;
+  document.getElementById('plat-claude').classList.toggle('sel',p==='claude');
+  document.getElementById('plat-chatgpt').classList.toggle('sel',p==='chatgpt');
+}
+
+/* ─── TRAINING PROMPT ─── */
+function genTrainP(){
+  if(!selSkills.size){toast('Mindestens einen Skill wählen!');return;}
+  const skills=S.skills.filter(s=>selSkills.has(s.id));
+  const beruf=S.prefs.beruf||'Fachinformatiker';
+  const mode=allModes().find(m=>m.id===selMode)||allModes()[0];
+
+  const skillList=skills.map(s=>`- ${s.name} (${s.fach}): ${s.beschreibung||'siehe Kontext'}`).join('\n');
+
+  let platformSuffix='';
+  if(selPlat_==='claude'){
+    platformSuffix=`\n\n--- PLATTFORM-HINWEIS ---\nDiese Session läuft in Claude. Erstelle am Anfang ein interaktives Artifact (HTML/JS) als Benutzeroberfläche für die Session — mit sichtbaren Fortschritts-Anzeigen, Eingabefeldern für meine Antworten und einem Ergebnis-Dashboard am Ende. Nutze das RPG-Thema visuell (Pergament-Optik, Pixel-Elemente, XP-Balken).\n\nWICHTIG: Am Ende der Session den Abschlussbericht AUSSERHALB des Artifacts ausgeben \u2014 als kopierbaren Textblock mit der Ueberschrift KAMPAGNEN-BERICHT und dem Format: SkillName | Level (0-4) | Feedback. Schreibe davor: Bericht kopieren und in App einfuegen.`;
+  } else {
+    platformSuffix=`\n\n--- PLATTFORM-HINWEIS ---\nDiese Session läuft als ChatGPT-Dialog. Führe die Session rein als Textdialog — eine Frage oder Aufgabe nach der anderen. Warte immer auf meine Antwort, bevor du weitermachst.\n\nWICHTIG: Am Ende der Session den Abschlussbericht in einem Codeblock ausgeben, den ich direkt kopieren kann. Format:\nSkillName | Level (0-4) | Feedback\nSchreibe davor: Kampagnen-Bericht - Block in App einfuegen.`;
+  }
+
+  const p=mode.prompt
+    .replace(/\{skills\}/g, skillList)
+    .replace(/\{beruf\}/g, beruf)
+    .replace(/\{platform\}/g, selPlat_==='claude'?'Claude Artifact':'ChatGPT Dialog')
+    + platformSuffix;
+
+  Ps[3]=p;
+  const b=document.getElementById('p3box'); b.textContent=p; b.style.display='block';
+  document.getElementById('cp3').disabled=false;
+  toast('📜 Kampagnen-Prompt: '+mode.name+'!');
+}
+
+/* ─── SAVE REPORT ─── */
+function saveReport(){
+  const raw=document.getElementById('rep-in').value.trim();
+  if(!raw){toast('Bitte Bericht einfügen!');return;}
+  let upd=0;
+  raw.split('\n').map(l=>l.trim()).filter(Boolean).forEach(line=>{
+    const p=line.split('|').map(x=>x.trim()); if(p.length<2) return;
+    const sk=S.skills.find(s=>s.name.toLowerCase()===p[0].toLowerCase()); if(!sk) return;
+    sk.level=Math.max(0,Math.min(4,parseInt(p[1])||0));
+    sk.xp=(sk.xp||0)+1; sk.sessions=(sk.sessions||0)+1; upd++;
+  });
+  save(); selSkills.clear();
+  document.getElementById('rep-in').value='';
+  toast('🏆 '+upd+' Charakterwerte aktualisiert!');
+}
+
+/* ─── CUSTOM MODE MODAL ─── */
+function openModeModal(id){
+  editModeId=id||null;
+  const modal=document.getElementById('mode-modal');
+  const title=document.getElementById('modal-title');
+  if(id){
+    const m=S.modes.find(x=>x.id===id);
+    if(!m) return;
+    document.getElementById('m-name').value=m.name;
+    document.getElementById('m-icon').value=m.icon;
+    document.getElementById('m-desc').value=m.desc;
+    document.getElementById('m-prompt').value=m.prompt;
+    title.textContent='✏ MODUS BEARBEITEN';
+  } else {
+    document.getElementById('m-name').value='';
+    document.getElementById('m-icon').value='🔮';
+    document.getElementById('m-desc').value='';
+    document.getElementById('m-prompt').value='';
+    title.textContent='⚔ NEUEN MODUS ERSTELLEN';
+  }
+  modal.classList.remove('hidden');
+}
+function editMode(id){ openModeModal(id); }
+function closeModeModal(){ document.getElementById('mode-modal').classList.add('hidden'); editModeId=null; }
+function saveMode(){
+  const name=document.getElementById('m-name').value.trim();
+  const icon=document.getElementById('m-icon').value.trim()||'🔮';
+  const desc=document.getElementById('m-desc').value.trim();
+  const prompt=document.getElementById('m-prompt').value.trim();
+  if(!name||!prompt){toast('Name und Prompt sind Pflicht!');return;}
+  if(editModeId){
+    const m=S.modes.find(x=>x.id===editModeId);
+    if(m){ m.name=name; m.icon=icon; m.desc=desc; m.prompt=prompt; }
+  } else {
+    S.modes.push({id:'custom_'+Date.now(),icon,name,desc,prompt,builtin:false});
+  }
+  save(); renderModes(); closeModeModal();
+  toast('✓ Modus gespeichert!');
+}
+
+/* ─── SKILL FARMER ─── */
+function genFarmerP(){
+  const mat=document.getElementById('sf-material').value.trim();
+  if(!mat){toast('Bitte Material einfügen!');return;}
+  const typ=document.getElementById('sf-type').value;
+  const fach=document.getElementById('sf-fach').value.trim();
+  const beruf=S.prefs.beruf||'Fachinformatiker';
+  const typLabel={folie:'Präsentationsfolien',skript:'Skript / Lehrtext',notizen:'Mitschrift',aufgaben:'Aufgabenblatt',mixed:'gemischtes Material'}[typ]||typ;
+
+  const p=`Du bist mein Skill-Extraktions-Assistent für die Umschulung zum ${beruf}.
+
+Quellentyp: ${typLabel}${fach?'\nFach-Kontext: '+fach:''}
+
+Material:
+---
+${mat}
+---
+
+Aufgabe: Extrahiere alle lernbaren Skills aus diesem Material.
+
+Format (exakt, eine Zeile pro Skill):
+SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+
+Regeln:
+- Nur konkrete, lernbare Konzepte, Techniken, Befehle, Methoden
+- Fach aus Kontext ableiten${fach?' (bevorzuge: '+fach+')':''}
+- Keine Meta-Infos über das Dokument selbst
+- Keine Duplikate, keine Nummerierung
+- Nur die Liste ausgeben`;
+  Ps['f']=p;
+  const b=document.getElementById('pfbox'); b.textContent=p; b.style.display='block';
+  document.getElementById('cpf').disabled=false;
+  toast('🌾 Farmer-Prompt bereit!');
+}
+
+function genFarmerAbgleich(){
+  const raw=document.getElementById('sf-result').value.trim();
+  if(!raw){toast('Bitte geerntete Skills einfügen!');return;}
+  const ex=S.skills.map(s=>s.name).join(', ')||'(noch keine Skills)';
+  const p=`Du bist mein Skill-Tracker.
+
+Bereits bekannte Skills in meiner Datenbank:
+${ex}
+
+Neu geerntet aus Lernmaterial:
+${raw}
+
+Aufgabe: Welche Skills sind WIRKLICH NEU (noch nicht in der Datenbank)?
+
+Format (exakt, eine Zeile pro neuem Skill):
+SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+
+Regeln:
+- Nur neue Skills ausgeben (auch Synonyme berücksichtigen)
+- Keine Nummerierung, nur die Liste`;
+  Ps['fa']=p;
+  const b=document.getElementById('pfabox'); b.textContent=p; b.style.display='block';
+  document.getElementById('cpfa').disabled=false;
+  toast('⚖️ Abgleich-Prompt bereit!');
+}
+
+function saveFarmerSkills(){
+  const raw=document.getElementById('sf-new').value.trim();
+  if(!raw){toast('Bitte Skills einfügen!');return;}
+  const added=ingestSkillLines(raw);
+  save(); updateFilters();
+  document.getElementById('sf-new').value='';
+  toast('🌾 '+added+' Skills geerntet und eingeschrieben!');
+}
+
+/* ─── DATA ─── */
+function exportCSV(){
+  const hdr=['Name','Fach','Beschreibung','Datum','Level','Level-Name','XP','Sessions'].join(';');
+  const rows=S.skills.map(s=>[`"${s.name}"`,`"${s.fach}"`,`"${(s.beschreibung||'').replace(/"/g,'""')}"`,`"${s.datum}"`,s.level||0,`"${LV[Math.min(s.level||0,4)]}"`,s.xp||0,s.sessions||0].join(';'));
+  const csv=[hdr,...rows].join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='skills_'+today().replace(/\./g,'-')+'.csv'; a.click();
+  URL.revokeObjectURL(url); toast('💾 CSV exportiert!');
+}
+function importCSV(input){
+  const file=input.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=e=>{
+    const text=e.target.result.replace(/^\uFEFF/,'');
+    const lines=text.split('\n').filter(Boolean);
+    if(lines.length<2){toast('CSV scheint leer.');return;}
+    const imp=[];
+    for(let i=1;i<lines.length;i++){
+      const p=lines[i].split(';').map(x=>x.replace(/^"|"$/g,'').trim());
+      if(p.length<4) continue;
+      imp.push({id:Date.now()+Math.random()+i,name:p[0],fach:p[1],beschreibung:p[2],datum:p[3],level:parseInt(p[4])||0,xp:parseInt(p[6])||0,sessions:parseInt(p[7])||0});
+    }
+    S.skills=imp; save(); updateFilters();
+    toast('📂 '+imp.length+' Skills importiert!');
+  };
+  r.readAsText(file,'UTF-8'); input.value='';
+}
+function savePrefs(){
+  S.prefs.beruf=document.getElementById('pref-beruf').value;
+  S.prefs.kurs=document.getElementById('pref-kurs').value;
+  save(); toast('✓ Gespeichert!');
+}
+function resetData(){
+  if(!confirm('Wirklich alle Daten und custom Modi löschen?')) return;
+  S.skills=[]; S.modes=[];
+  save(); updateFilters(); renderModes();
+  toast('☠️ Alles gelöscht.');
+}
+
+
+/* ─── WOCHENKAMPAGNE ─── */
+
+var BASE_PROMPT = [
+  'Du bist mein hochoptimierter Unterrichts-Assistent für strukturierte Mitschriebe aus Teams-Unterricht.',
+  '**KERNAUFGABE**: Screenshots in chronologischer Reihenfolge → strukturierte Canvas-Mitschriebe (Markdown + Mermaid) → direkt in Obsidian speicherbar. **Aufgaben automatisch extrahieren.**',
+  '---',
+  '## AUFGABENERKENNUNG',
+  'Wenn Aufgaben erkannt werden ("Aufgabe:", "Hausaufgabe:", "Bearbeite:", Deadline-Hinweise):',
+  'Extrahiere die komplette Aufgabenstellung und speichere sie in einem Codeblock im Canvas.',
+  '---',
+  '## CANVAS-FORMAT (für jedes Fach)',
+  '# [FACHNAME] – [DD.MM.] [HH:MM-HH:MM]',
+  '## 🎯 Kernthemen',
+  '### 1. [Thema A]',
+  '**Erklärung:** ...',
+  '**Kontext/Bezüge:** ...',
+  '---',
+  '## 📊 Mermaid-Diagramm',
+  '```mermaid',
+  'graph TD',
+  'A[Thema] --> B[Detail]',
+  '```',
+  '## 💡 Vertiefung & Beispiele',
+  '## 🔗 Obsidian-Links',
+  '## 📋 Aufgabenstellungen',
+  '```',
+  'Aufgabe 1: ...',
+  'Deadline: ...',
+  '```',
+  '---',
+  '## FACH-WECHSEL',
+  'Wenn ich sage "[Fach] fertig" oder "Nächstes Fach":',
+  '1. Canvas finalisieren (Syntax-Check, Mermaid korrekt, Aufgaben vollständig)',
+  '2. Nächstes Fach aktivieren',
+  '3. Bestätigung: "✅ [Altes Fach] fertig | [Neues Fach] aktiv"',
+  'Keine Fragen – einfach weiter.',
+  '---',
+  '## SCREENSHOT-VERARBEITUNG',
+  '- Best-effort OCR',
+  '- Stichworte: wörtlich übernehmen, fett, zentrale Position',
+  '- Mermaid: 1–3 pro Fach, nur wenn logisch sinnvoll',
+  '- Nur Markdown + Mermaid, kein HTML, kein YAML-Frontmatter',
+  '---',
+  '## WÄHREND DES TAGES',
+  '- Kein Overhead, keine Rückfragen – nur verarbeiten',
+  '- Natural Flow: Screenshots → Canvas → Fach fertig → Nächstes Canvas',
+  '- Aufgaben automatisch erfasst',
+  '---',
+  '## TAGESABSCHLUSS: SKILL-EXTRAKTION',
+  'Wenn ich "Skills extrahieren" sage:',
+  'Liste alle Fachbegriffe, Konzepte, Techniken und Methoden des Tages.',
+  'Format: SkillName | Fach | Kurzbeschreibung (max. 1 Satz)',
+  'Keine Nummerierung, nur die Liste.'
+].join('\n');
+
+
+
+function parseWochenplan() {
+  var raw = document.getElementById('wp-input').value.trim();
+  if (!raw) { toast('Bitte Wochenplan eingeben!'); return; }
+
+  var days = [];
+  var currentDay = null;
+  var currentFaecher = [];
+
+  raw.split('\n').forEach(function(line) {
+    line = line.trim();
+    var dayMatch = line.match(/^#{1,3}\s+(\w+),?\s+(\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)/);
+    if (dayMatch) {
+      if (currentDay) days.push({ day: currentDay, faecher: currentFaecher });
+      currentDay = dayMatch[1] + ', ' + dayMatch[2];
+      currentFaecher = [];
+      return;
+    }
+    var lessonMatch = line.match(/^-\s*(\d{1,2}[:.]\d{2}[\u2013\-]\d{1,2}[:.]\d{2}|\d{1,2}:\d{2}[-–]\d{1,2}:\d{2})\s*[\u2192\->]+\s*(.+)/);
+    if (lessonMatch && currentDay) {
+      var time = lessonMatch[1].replace('\u2013','-').replace('–','-');
+      var desc = lessonMatch[2].trim().replace(/\s*\(Microsoft Teams\)/i,'').replace(/\s*\(Teams\)/i,'').trim();
+      currentFaecher.push({ time: time, desc: desc });
+    }
+    if (/^\s*-?\s*frei\s*$/i.test(line) && currentDay) {
+      currentFaecher.push({ time: '', desc: 'frei' });
+    }
+  });
+  if (currentDay) days.push({ day: currentDay, faecher: currentFaecher });
+
+  wpDays = days.filter(function(d) {
+    return d.faecher.length > 0 && !(d.faecher.length === 1 && d.faecher[0].desc === 'frei');
+  });
+
+  if (!wpDays.length) { toast('Keine Unterrichtstage gefunden.'); return; }
+  try { localStorage.setItem('fi_wp_days', JSON.stringify(wpDays)); } catch(e){}
+  renderWpDays();
+  document.getElementById('wp-days-box').style.display = 'block';
+  toast('🗺️ ' + wpDays.length + ' Unterrichtstage geladen!');
+}
+
+function buildDayPrompt(day) {
+  var plan = day.faecher.map(function(f, i) {
+    return (i+1) + '\ufe0f\u20e3 [' + f.time + '] ' + f.desc;
+  }).join('\n');
+  return BASE_PROMPT + '\n---\n## INITIALISIERUNG: STUNDENPLAN EINLESEN\n📅 Stundenplan für heute (' + day.day + '):\n' + plan + '\n\n✅ Bereit. Sende Screenshots chronologisch – ich verarbeite sie in dieser Reihenfolge.';
+}
+
+function renderWpDays() {
+  var container = document.getElementById('wp-days');
+  container.innerHTML = wpDays.map(function(day, idx) {
+    var fachLines = day.faecher.map(function(f) {
+      return '<div style="font-family:var(--display);font-size:17px;color:var(--ink-light);">' +
+        (f.time ? '<span style="font-family:var(--pixel);font-size:6px;color:var(--wood);">' + f.time + '</span> ' : '') +
+        f.desc + '</div>';
+    }).join('');
+    return '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 0;border-bottom:2px solid var(--parchment-shadow);">' +
+      '<div>' +
+        '<div style="font-family:var(--pixel);font-size:8px;color:var(--wood-dark);margin-bottom:6px;">' + day.day + '</div>' +
+        fachLines +
+      '</div>' +
+      '<button class="btn btn-q btn-sm" onclick="copyDayPrompt(' + idx + ')">⧉ Prompt kopieren</button>' +
+    '</div>';
+  }).join('');
+}
+
+function copyDayPrompt(idx) {
+  var day = wpDays[idx];
+  if (!day) return;
+  var text = buildDayPrompt(day);
+  navigator.clipboard.writeText(text).then(function() {
+    toast('✅ ' + day.day + ' – Prompt kopiert!');
+  }).catch(function() {
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('✅ ' + day.day + ' – Prompt kopiert!');
+  });
+}
+
+
+function exportJSON(){
+  var wpSaved = null;
+  try { var _w = localStorage.getItem('fi_wp_days'); if(_w) wpSaved = JSON.parse(_w); } catch(e){}
+  var data = {
+    version: 5,
+    exported: new Date().toISOString(),
+    skills: S.skills,
+    modes: S.modes,
+    prefs: S.prefs,
+    dungeons: S.dungeons || [],
+    wpDays: wpSaved || [],
+    _lastExported: S._lastExported
+  };
+  var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'skilltracker_backup_' + today().replace(/\./g,'-') + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('📦 Backup exportiert!');
+}
+
+function importJSON(input){
+  var file = input.files[0]; if(!file) return;
+  var r = new FileReader();
+  r.onload = function(e){
+    var raw = e.target.result;
+    // Strip BOM if present
+    if(raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+    var data;
+    try { data = JSON.parse(raw); } catch(parseErr) { toast('JSON-Fehler: ' + parseErr.message.slice(0,60)); return; }
+    try {
+      applyImportData(data);
+      toast('✅ ' + S.skills.length + ' Skills, ' + (S.dungeons||[]).length + ' Dungeons geladen!');
+    } catch(err) { toast('Import-Fehler: ' + err.message.slice(0,60)); }
+  };
+  r.readAsText(file, 'UTF-8');
+  input.value = '';
+}
+
+/* ─── WELTENKARTE v2 ─── */
+
+var WK_DUNGEONS_DEFAULT = [
+  { id:'bgp-hk',      name:'Halle der Handlungskompetenzen', fach:'BGP-HK / IT-WS',            phase:0, icon:'🏛️', color:'#8b5e3c', days:[], boss:null },
+  { id:'anwp-python', name:'Bibliothek der Schlangen',        fach:'AnwP-Python / DBSQL',        phase:0, icon:'📚', color:'#1e5c2a', days:[], boss:null },
+  { id:'bgp-wiso',    name:'Marktplatz der Kaufleute',        fach:'BGP-WiSo / PQSM / DS',      phase:0, icon:'⚖️', color:'#5c3483', days:[], boss:null },
+  { id:'anwp-gui',    name:'Werkstatt der Oberflächen',       fach:'FIAE-AnwP-GUI / Entwickeln', phase:1, icon:'🖥️', color:'#1a4a7a', days:[], boss:null },
+  { id:'anwp-oop',    name:'Turm der Objekte',                fach:'AnwP-UML-OOP',               phase:1, icon:'🗼', color:'#8b1a1a', days:[], boss:null },
+  { id:'bgp-mukb',    name:'Handelsgilde',                    fach:'BGP-MuKb / Rewe',            phase:1, icon:'💰', color:'#7a5800', days:[], boss:null },
+  { id:'itt-net',     name:'Netzwerk-Festung',                fach:'ITT-Net-IS / ITS-Net-Lin',   phase:1, icon:'🏰', color:'#1a3a2a', days:[], boss:null },
+  { id:'itt-pc',      name:'Maschinenkammer',                 fach:'FI-ITS-CySy / ITT-PC',       phase:1, icon:'⚙️', color:'#3a2a1a', days:[], boss:{label:'AP Teil 1', date:'30.09.2026', icon:'💀'} },
+  { id:'praktikum',   name:'Feldmission',                     fach:'Praktikum',                  phase:2, icon:'🌍', color:'#1a4a1a', days:[], boss:null },
+  { id:'fiae-itp',    name:'Abschlusskampagne',               fach:'FIAE-ITP / PV-Fächer',       phase:3, icon:'⚔️', color:'#5a2a0a', days:[], boss:{label:'AP Teil 2', date:'27.04.2027', icon:'👑'} }
+];
+
+var PHASE_NAMES = ['Akt I — Grundlagen','Akt II — Kernfächer','Feldmission','Akt III — Abschluss'];
+var PHASE_COLORS = ['#3d1f0a','#0a1f3d','#0a2d0a','#2d0a0a'];
+
+/* DAY STATES:
+   0 = fog (unknown)
+   1 = explored (stundenplan imported)
+   2 = cleared (mitschrieb done - set via tagesabschluss)
+   3 = mastered (skills trained level>=2)
+*/
+
+function wkInit(){
+  if(!S.dungeons) S.dungeons = JSON.parse(JSON.stringify(WK_DUNGEONS_DEFAULT));
+  wkDraw();
+  wkBindCanvas();
+}
+
+/* ─── CANVAS DRAWING ─── */
+
+function wkDraw(){
+  var canvas = document.getElementById('wk-canvas');
+  if(!canvas || !S.dungeons) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.parentElement.clientWidth || 800;
+  canvas.width = W;
+  canvas.height = 520;
+  ctx.clearRect(0,0,W,520);
+
+  // Parchment background
+  ctx.fillStyle = '#2a1500';
+  ctx.fillRect(0,0,W,520);
+
+  // Draw terrain texture (subtle noise)
+  for(var i=0;i<W;i+=4){
+    for(var j=0;j<520;j+=4){
+      var n = (Math.sin(i*0.3+j*0.7)*0.5+0.5)*0.08;
+      ctx.fillStyle = 'rgba(255,200,100,'+(n)+')';
+      ctx.fillRect(i,j,4,4);
+    }
+  }
+
+  // Draw phase borders
+  var phaseLayout = wkGetLayout(W);
+
+  phaseLayout.forEach(function(phase){
+    // Phase background
+    ctx.fillStyle = phase.bg;
+    ctx.fillRect(phase.x, phase.y, phase.w, phase.h);
+    // Phase border
+    ctx.strokeStyle = '#8b5e3c';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(phase.x+1, phase.y+1, phase.w-2, phase.h-2);
+    // Phase label
+    ctx.fillStyle = '#c8a96e';
+    ctx.font = 'bold 9px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(phase.name, phase.x + phase.w/2, phase.y + 14);
+  });
+
+  // Draw dungeons
+  S.dungeons.forEach(function(dungeon){
+    var layout = wkGetDungeonLayout(dungeon.id, W);
+    if(!layout) return;
+    wkDrawDungeon(ctx, dungeon, layout);
+  });
+
+  // Draw mountain/river decorations between phases
+  wkDrawDecorations(ctx, W, phaseLayout);
+
+  // Draw boss markers
+  S.dungeons.forEach(function(d){
+    if(!d.boss) return;
+    var layout = wkGetDungeonLayout(d.id, W);
+    if(!layout) return;
+    wkDrawBoss(ctx, d.boss, layout.x + layout.w - 20, layout.y + layout.h - 20);
+  });
+}
+
+function wkDrawDungeon(ctx, dungeon, layout){
+  var x = layout.x, y = layout.y, w = layout.w, h = layout.h;
+  var CELL = layout.cell;
+
+  // Dungeon background
+  ctx.fillStyle = '#1a0f05';
+  ctx.fillRect(x,y,w,h);
+
+  // Dungeon border (stone wall style)
+  ctx.strokeStyle = dungeon.color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x,y,w,h);
+
+  // Dungeon name
+  ctx.fillStyle = dungeon.color;
+  ctx.font = '7px "Press Start 2P", monospace';
+  ctx.textAlign = 'left';
+  var nameShort = dungeon.name.length > 18 ? dungeon.name.substring(0,16)+'…' : dungeon.name;
+  ctx.fillText(dungeon.icon + ' ' + nameShort, x+4, y+13);
+
+  // Draw day cells
+  var cols = Math.floor((w-8) / (CELL+2));
+  dungeon.days.forEach(function(day, i){
+    var col = i % cols;
+    var row = Math.floor(i / cols);
+    var cx = x + 4 + col*(CELL+2);
+    var cy = y + 18 + row*(CELL+2);
+    wkDrawCell(ctx, cx, cy, CELL, day.state||0, dungeon.color, day.date);
+  });
+
+  // Empty cells (fog placeholders) for visual structure
+  var filledRows = dungeon.days.length > 0 ? Math.ceil(dungeon.days.length/cols) : 0;
+  var availRows = Math.floor((h-22)/(CELL+2));
+  if(filledRows < availRows){
+    for(var r=filledRows; r<availRows; r++){
+      for(var c=0;c<cols;c++){
+        var cx = x+4+c*(CELL+2);
+        var cy = y+18+r*(CELL+2);
+        wkDrawCell(ctx,cx,cy,CELL,0,dungeon.color,null);
+      }
+    }
+  }
+
+  // Progress bar
+  var total = dungeon.days.length;
+  var cleared = dungeon.days.filter(function(d){ return (d.state||0)>=2; }).length;
+  var pct = total>0 ? cleared/total : 0;
+  var barY = y+h-10;
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(x+4, barY, w-8, 6);
+  if(pct>0){
+    ctx.fillStyle = dungeon.color;
+    ctx.fillRect(x+4, barY, Math.floor((w-8)*pct), 6);
+  }
+}
+
+function wkDrawCell(ctx, x, y, size, state, dungeonColor, date){
+  var colors = [
+    {bg:'#0d0d1a', border:'#1a1a3a'}, // 0 fog
+    {bg:'#2a2040', border:'#6a5a80'}, // 1 explored
+    {bg:dungeonColor, border:lighten(dungeonColor,40)}, // 2 cleared
+    {bg:'#8b6914', border:'#ffd700'}  // 3 mastered
+  ];
+  var col = colors[Math.min(state,3)];
+
+  ctx.fillStyle = col.bg;
+  ctx.fillRect(x,y,size,size);
+  ctx.strokeStyle = col.border;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x,y,size,size);
+
+  // Fog overlay
+  if(state===0){
+    ctx.fillStyle = 'rgba(0,0,20,0.7)';
+    ctx.fillRect(x,y,size,size);
+    // Fog swirl dots
+    ctx.fillStyle = 'rgba(100,80,140,0.3)';
+    ctx.fillRect(x+2,y+2,2,2);
+    ctx.fillRect(x+size-4,y+size-4,2,2);
+  }
+
+  // Cleared sparkle
+  if(state>=2){
+    ctx.fillStyle = 'rgba(255,255,200,0.3)';
+    ctx.fillRect(x+1,y+1,2,2);
+  }
+
+  // Mastered gold shimmer
+  if(state>=3){
+    ctx.fillStyle = 'rgba(255,215,0,0.5)';
+    ctx.fillRect(x,y,size,2);
+    ctx.fillRect(x,y,2,size);
+  }
+}
+
+function lighten(hex, amount){
+  var r = parseInt(hex.slice(1,3),16);
+  var g = parseInt(hex.slice(3,5),16);
+  var b = parseInt(hex.slice(5,7),16);
+  r = Math.min(255,r+amount);
+  g = Math.min(255,g+amount);
+  b = Math.min(255,b+amount);
+  return '#'+r.toString(16).padStart(2,'0')+g.toString(16).padStart(2,'0')+b.toString(16).padStart(2,'0');
+}
+
+function wkDrawBoss(ctx, boss, x, y){
+  ctx.font = '16px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(boss.icon, x, y);
+}
+
+function wkDrawDecorations(ctx, W, phases){
+  // Draw mountain peaks between phases as dividers
+  ctx.fillStyle = '#4a3520';
+  phases.forEach(function(p, i){
+    if(i===0) return;
+    for(var mx=p.x; mx<p.x+8; mx+=8){
+      ctx.beginPath();
+      ctx.moveTo(mx,p.y+4);
+      ctx.lineTo(mx+4,p.y-8);
+      ctx.lineTo(mx+8,p.y+4);
+      ctx.fill();
+    }
+  });
+}
+
+/* ─── LAYOUT CALCULATION ─── */
+
+function wkGetLayout(W){
+  // 4 phases stacked, each gets a portion of the 520px height
+  var phases = [
+    {name:PHASE_NAMES[0], bg:'rgba(60,30,5,0.7)',  x:4, y:4,   w:W-8, h:120},
+    {name:PHASE_NAMES[1], bg:'rgba(5,20,50,0.7)',  x:4, y:128, w:W-8, h:220},
+    {name:PHASE_NAMES[2], bg:'rgba(5,40,5,0.7)',   x:4, y:352, w:W-8, h:60},
+    {name:PHASE_NAMES[3], bg:'rgba(50,10,5,0.7)',  x:4, y:416, w:W-8, h:98}
+  ];
+  return phases;
+}
+
+function wkGetDungeonLayout(id, W){
+  // Fixed layout grid based on dungeon index within phase
+  var CELL = 13;
+  var phaseLayouts = wkGetLayout(W);
+  var dungeon = S.dungeons.find(function(d){ return d.id===id; });
+  if(!dungeon) return null;
+
+  var phaseIdx = dungeon.phase;
+  var phaseDungeons = S.dungeons.filter(function(d){ return d.phase===phaseIdx; });
+  var posInPhase = phaseDungeons.findIndex(function(d){ return d.id===id; });
+  var count = phaseDungeons.length;
+  var pl = phaseLayouts[phaseIdx];
+  var padX = 4, padY = 18;
+  var usableW = pl.w - padX*2;
+  var dungeonW = Math.floor(usableW / count) - 4;
+  var dungeonH = pl.h - padY - 14;
+  var x = pl.x + padX + posInPhase*(dungeonW+4);
+  var y = pl.y + padY;
+
+  return {x:x, y:y, w:dungeonW, h:dungeonH, cell:CELL};
+}
+
+/* ─── INTERACTION ─── */
+
+function wkBindCanvas(){
+  var canvas = document.getElementById('wk-canvas');
+  if(!canvas) return;
+  canvas.addEventListener('click', function(e){
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / rect.width;
+    var mx = (e.clientX - rect.left) * scaleX;
+    var my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    wkHandleClick(mx, my, canvas.width);
+  });
+  canvas.addEventListener('mousemove', function(e){
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / rect.width;
+    var mx = (e.clientX - rect.left) * scaleX;
+    var my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    wkHandleHover(mx, my, canvas.width, e.clientX, e.clientY);
+  });
+  canvas.addEventListener('mouseleave', function(){
+    document.getElementById('wk-tooltip').style.display='none';
+  });
+  window.addEventListener('resize', function(){ wkDraw(); });
+}
+
+function wkHitTest(mx, my, W){
+  var CELL = 13;
+  for(var di=0; di<S.dungeons.length; di++){
+    var dungeon = S.dungeons[di];
+    var layout = wkGetDungeonLayout(dungeon.id, W);
+    if(!layout) continue;
+    var cols = Math.floor((layout.w-8)/(CELL+2));
+    for(var i=0; i<dungeon.days.length; i++){
+      var col = i%cols;
+      var row = Math.floor(i/cols);
+      var cx = layout.x+4+col*(CELL+2);
+      var cy = layout.y+18+row*(CELL+2);
+      if(mx>=cx && mx<=cx+CELL && my>=cy && my<=cy+CELL){
+        return {dungeon:dungeon, dayIdx:i, cx:cx, cy:cy};
+      }
+    }
+  }
+  return null;
+}
+
+function wkHandleClick(mx, my, W){
+  var hit = wkHitTest(mx, my, W);
+  if(!hit) return;
+  var day = hit.dungeon.days[hit.dayIdx];
+  // Cycle: 0→1 (explore), 1→2 (clear), 2→3 (master), 3→1
+  var next = {0:1, 1:2, 2:3, 3:1};
+  day.state = next[day.state||0];
+  var labels = ['Nebel','Erkundet','Cleared','Gemeistert'];
+  toast('⚔️ ' + day.date + ' → ' + labels[day.state]);
+  wkSave();
+}
+
+function wkHandleHover(mx, my, W, clientX, clientY){
+  var tip = document.getElementById('wk-tooltip');
+  var hit = wkHitTest(mx, my, W);
+  if(!hit){
+    tip.style.display='none';
+    return;
+  }
+  var day = hit.dungeon.days[hit.dayIdx];
+  var stateLabels = ['🌫️ Nebel','👁️ Erkundet','⚔️ Cleared','🏆 Gemeistert'];
+  tip.innerHTML = '<strong>' + day.date + '</strong><br>' + hit.dungeon.name + '<br>' + stateLabels[day.state||0];
+  tip.style.display='block';
+  tip.style.left=(clientX+12)+'px';
+  tip.style.top=(clientY-10)+'px';
+}
+
+function wkSave(){
+  save();
+  wkDraw();
+}
+
+/* ─── IMPORT WORKFLOW ─── */
+
+var wkImportPromptText = '';
+
+function wkGenImportPrompt(){
+  var raw = document.getElementById('wk-import-raw').value.trim();
+  if(!raw){ toast('Stundenplan einfügen!'); return; }
+
+  var dungeonList = S.dungeons.map(function(d){
+    return '  ' + d.id + ' = ' + d.name + ' (' + d.fach + ')';
+  }).join('\n');
+
+  var prompt = 'Du bist mein Stundenplan-Assistent.\n\n' +
+    'Hier sind die verfügbaren Dungeons (ID = Name):\n' + dungeonList + '\n\n' +
+    'Hier ist mein Stundenplan:\n' + raw + '\n\n' +
+    'Aufgabe: Ordne jeden Unterrichtstag den passenden Dungeons zu.\n\n' +
+    'Regeln:\n' +
+    '- Nur TpU-Tage (Unterrichtstage), keine Urlaubs- oder Feiertage\n' +
+    '- Nutze die exakten Dungeon-IDs aus der Liste oben\n' +
+    '- Mehrere Dungeons pro Tag möglich (wenn mehrere Fächer)\n' +
+    '- Das Datum kommt aus dem Stundenplan selbst — nicht das heutige Datum\n' +
+    '- Format (eine Zeile pro Tag, exakt so):\n' +
+    'TT.MM.JJJJ | dungeon-id\n' +
+    'TT.MM.JJJJ | dungeon-id | dungeon-id\n\n' +
+    'Nur die Liste ausgeben, keine Erklärungen.';
+
+  wkImportPromptText = prompt;
+  var box = document.getElementById('wk-import-prompt-box');
+  box.textContent = prompt;
+  box.style.display = 'block';
+  document.getElementById('wk-copy-prompt').disabled = false;
+  toast('📜 Import-Prompt generiert!');
+}
+
+function wkCopyImportPrompt(){
+  if(!wkImportPromptText) return;
+  navigator.clipboard.writeText(wkImportPromptText).then(function(){
+    toast('✓ Kopiert!');
+  }).catch(function(){
+    var ta=document.createElement('textarea'); ta.value=wkImportPromptText;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    toast('✓ Kopiert!');
+  });
+}
+
+function wkImportResult(){
+  var raw = document.getElementById('wk-import-result').value.trim();
+  if(!raw){ toast('Ergebnis einfügen!'); return; }
+  var added = 0, skipped = 0;
+  raw.split('\n').map(function(l){ return l.trim(); }).filter(Boolean).forEach(function(line){
+    var parts = line.split('|').map(function(p){ return p.trim(); });
+    if(parts.length < 2) return;
+    var date = parts[0];
+    if(!/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)){ skipped++; return; }
+    for(var i=1; i<parts.length; i++){
+      var did = parts[i];
+      var dungeon = S.dungeons.find(function(d){ return d.id===did; });
+      if(!dungeon){ skipped++; continue; }
+      if(dungeon.days.some(function(d){ return d.date===date; })){ skipped++; continue; }
+      dungeon.days.push({date:date, state:1});
+      dungeon.days.sort(function(a,b){
+        return a.date.split('.').reverse().join('').localeCompare(b.date.split('.').reverse().join(''));
+      });
+      added++;
+    }
+  });
+  document.getElementById('wk-import-result').value='';
+  wkSave();
+  toast('⚔️ '+added+' Tage importiert'+(skipped?' ('+skipped+' übersprungen)':'')+'!');
+}
+
+/* ─── TAGESABSCHLUSS AUTO-CLEAR ─── */
+
+function wkAutoSetCleared(dateStr){
+  // Called when tagesabschluss skills are saved with a date
+  if(!dateStr || !S.dungeons) return;
+  var found = false;
+  S.dungeons.forEach(function(dungeon){
+    dungeon.days.forEach(function(day){
+      if(day.date === dateStr && (day.state||0) < 2){
+        day.state = 2;
+        found = true;
+      }
+    });
+  });
+  if(found) wkSave();
+  return found;
+}
+
+function wkAutoSetMastered(dungeonId){
+  if(!S.dungeons) return;
+  var dungeon = S.dungeons.find(function(d){ return d.id===dungeonId; });
+  if(!dungeon) return;
+  dungeon.days.forEach(function(day){
+    if((day.state||0)===2) day.state=3;
+  });
+  wkSave();
+}
+
+function wkAddDungeon(){
+  var name = document.getElementById('wk-new-dungeon-name').value.trim();
+  var fach = document.getElementById('wk-new-dungeon-fach').value.trim();
+  if(!name){ toast('Name fehlt!'); return; }
+  S.dungeons.push({
+    id:'custom_'+Date.now(), name:name, fach:fach||name,
+    phase:1, icon:'🗡️', color:'#5a3a6a', days:[], boss:null
+  });
+  wkSave();
+  document.getElementById('wk-new-dungeon-name').value='';
+  document.getElementById('wk-new-dungeon-fach').value='';
+  toast('🗺️ Neuer Dungeon: '+name);
+}
+
+
+
+/* ─── GITHUB GIST SYNC ─── */
+
+function gistGetToken() { return localStorage.getItem(GIST_TOKEN_KEY) || ''; }
+function gistGetId()    { return localStorage.getItem(GIST_ID_KEY) || ''; }
+function gistGetAuto()  { return localStorage.getItem(GIST_AUTO_KEY) === '1'; }
+
+function gistBuildPayload() {
+  var wpSaved = null;
+  try { var _w = localStorage.getItem('fi_wp_days'); if(_w) wpSaved = JSON.parse(_w); } catch(e){}
+  return {
+    version: 5,
+    exported: new Date().toISOString(),
+    skills: S.skills,
+    modes: S.modes,
+    prefs: S.prefs,
+    dungeons: S.dungeons || [],
+    wpDays: wpSaved || [],
+    _lastExported: S._lastExported
+  };
+}
+
+var gistAutoSyncTimer = null;
+function gistAutoSyncDebounced() {
+  if(!gistGetAuto() || !gistGetToken() || !gistGetId()) return;
+  if(gistAutoSyncTimer) clearTimeout(gistAutoSyncTimer);
+  gistAutoSyncTimer = setTimeout(function(){
+    gistAutoSyncTimer = null;
+    gistPush(false);
+  }, 30000);
+}
+
+function gistPush(force) {
+  var token = gistGetToken(); var id = gistGetId();
+  if(!token || !id) { toast('⚠️ Gist nicht konfiguriert!'); return; }
+  if(force) { gistDoPush(token, id); return; }
+  fetch('https://api.github.com/gists/' + id, {
+    headers: { 'Authorization': 'token ' + token }
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(gist) {
+    var file = gist.files && (gist.files[GIST_FILE] || Object.values(gist.files)[0]);
+    if(!file || !file.content) { gistDoPush(token, id); return; }
+    var cloudData; try { cloudData = JSON.parse(file.content); } catch(e) { gistDoPush(token, id); return; }
+    var cloudTs = cloudData.exported || cloudData._lastExported || '';
+    var localTs = S._lastExported || '';
+    if(cloudTs > localTs) {
+      var proceed = confirm('Die Cloud-Version ist neuer als deine lokale Version.\n\nTrotzdem hochladen? (Abbrechen = Cloud herunterladen)');
+      if(proceed) { gistDoPush(token, id); }
+      else { gistPull(true); }
+    } else {
+      gistDoPush(token, id);
+    }
+  })
+  .catch(function(){ gistDoPush(token, id); });
+}
+
+function gistDoPush(token, id) {
+  var payload = JSON.stringify(gistBuildPayload(), null, 2);
+  fetch('https://api.github.com/gists/' + id, {
+    method: 'PATCH',
+    headers: { 'Authorization': 'token ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files: { [GIST_FILE]: { content: payload } } })
+  })
+  .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); toast('☁️ Gist gespeichert!'); })
+  .catch(function(e){ toast('Gist-Fehler: ' + e.message.slice(0,40)); });
+}
+
+function gistPull(silent) {
+  var token = gistGetToken(); var id = gistGetId();
+  if(!token || !id) { if(!silent) toast('⚠️ Gist nicht konfiguriert!'); return; }
+  fetch('https://api.github.com/gists/' + id, {
+    headers: { 'Authorization': 'token ' + token }
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(gist) {
+    var file = gist.files && (gist.files[GIST_FILE] || Object.values(gist.files)[0]);
+    if(!file || !file.content) { toast('Gist leer oder Datei nicht gefunden.'); return; }
+    var data; try { data = JSON.parse(file.content); } catch(e) { toast('Gist: JSON-Fehler'); return; }
+    applyImportData(data);
+    if(!silent) toast('⬇️ Cloud geladen: ' + (data.skills||[]).length + ' Skills!');
+  })
+  .catch(function(e){ toast('Gist-Fehler: ' + e.message.slice(0,40)); });
+}
+
+function gistMerge() {
+  var token = gistGetToken(); var id = gistGetId();
+  if(!token || !id) { toast('⚠️ Gist nicht konfiguriert!'); return; }
+  fetch('https://api.github.com/gists/' + id, {
+    headers: { 'Authorization': 'token ' + token }
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(gist) {
+    var file = gist.files && (gist.files[GIST_FILE] || Object.values(gist.files)[0]);
+    if(!file || !file.content) { gistDoPush(token, id); return; }
+    var cloud; try { cloud = JSON.parse(file.content); } catch(e) { return; }
+    // Merge: add items from cloud that don't exist locally (by id)
+    var merged = 0;
+    (cloud.skills||[]).forEach(function(cs){
+      if(!S.skills.some(function(ls){ return ls.id == cs.id; })){
+        S.skills.push(cs); merged++;
+      }
+    });
+    (cloud.modes||[]).forEach(function(cm){
+      if(!S.modes.some(function(lm){ return lm.id == cm.id; })){
+        S.modes.push(cm);
+      }
+    });
+    save(); updateFilters(); renderModes();
+    toast('⊕ Merge: ' + merged + ' neue Skills aus Cloud!');
+  })
+  .catch(function(e){ toast('Merge-Fehler: ' + e.message.slice(0,40)); });
+}
+
+function gistSaveSettings() {
+  var token = document.getElementById('gist-token').value.trim();
+  var id = document.getElementById('gist-id').value.trim();
+  var auto = document.getElementById('gist-auto').checked;
+  if(token) localStorage.setItem(GIST_TOKEN_KEY, token);
+  if(id) localStorage.setItem(GIST_ID_KEY, id);
+  localStorage.setItem(GIST_AUTO_KEY, auto ? '1' : '0');
+  toast('✓ Gist-Einstellungen gespeichert!');
+}
+
+function gistLoadSettings() {
+  var tf = document.getElementById('gist-token');
+  var idf = document.getElementById('gist-id');
+  var af = document.getElementById('gist-auto');
+  if(tf) tf.value = gistGetToken() ? '●'.repeat(20) : '';
+  if(idf) idf.value = gistGetId();
+  if(af) af.checked = gistGetAuto();
+}
+
+function applyImportData(data) {
+  if(!data || !Array.isArray(data.skills)) { toast('Ungültige Daten.'); return; }
+  S.skills = data.skills || [];
+  S.modes  = data.modes  || [];
+  if(data.prefs) S.prefs = data.prefs;
+  if(data.dungeons && Array.isArray(data.dungeons) && data.dungeons.length) S.dungeons = data.dungeons;
+  if(data.wpDays && Array.isArray(data.wpDays) && data.wpDays.length){
+    try { localStorage.setItem('fi_wp_days', JSON.stringify(data.wpDays)); } catch(e){}
+    wpDays = data.wpDays;
+  }
+  // wkInit first so wkDraw() works when save() triggers wkRender()
+  wkInit();
+  save(); updateFilters(); renderModes();
+  if(wpDays && wpDays.length){ renderWpDays(); var wb = document.getElementById('wp-days-box'); if(wb) wb.style.display='block'; }
+  var pb = document.getElementById('pref-beruf'); var pk = document.getElementById('pref-kurs');
+  if(pb && S.prefs){ pb.value = S.prefs.beruf||''; pk.value = S.prefs.kurs||''; }
+}
+
+
+/* ─── SIDEBAR NAV ─── */
+var NAV_ITEMS = [
+  { id:'ta', icon:'📜', label:'① Tagesabschluss' },
+  { id:'tr', icon:'⚔️', label:'② Training' },
+  { id:'sl', icon:'📋', label:'③ Skill-Liste' },
+  { id:'sf', icon:'🌾', label:'④ Skill Farmer' },
+  { id:'sp', icon:'🗺️', label:'⑤ Wochenkampagne' },
+  { id:'wk', icon:'🌍', label:'⑥ Weltenkarte' },
+  { id:'dt', icon:'⚙️', label:'⚙ Daten' }
+];
+
+function renderSidebarNav() {
+  var nav = document.getElementById('sidebar-nav-items');
+  if(!nav) return;
+  var currentTab = document.querySelector('.tab-btn.active');
+  var activeId = currentTab ? currentTab.getAttribute('onclick').match(/'(\w+)'/)[1] : 'ta';
+  nav.innerHTML = NAV_ITEMS.map(function(item) {
+    return '<button class="sidebar-nav-item ' + (item.id === activeId ? 'active' : '') + '" onclick="sidebarNav(\'' + item.id + '\')">' +
+      '<span class="nav-icon">' + item.icon + '</span>' +
+      '<span class="nav-label">' + item.label + '</span>' +
+      '</button>';
+  }).join('');
+}
+
+function openSidebar() {
+  renderSidebarNav();
+  document.getElementById('sidebar').style.transform = 'translateX(0)';
+  document.getElementById('sidebar-overlay').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').style.transform = 'translateX(-100%)';
+  document.getElementById('sidebar-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function sidebarNav(tabId) {
+  closeSidebar();
+  var btn = document.querySelector('.tab-btn[onclick*="' + tabId + '"]');
+  if(btn) switchTab(tabId, btn);
+  else switchTab(tabId, {classList:{add:function(){},remove:function(){},toggle:function(){}}});
+}
+
+// INIT
+load(); setStep(1); wkInit(); gistLoadSettings();
+// Restore Wochenkampagne
+try {
+  var _wpSaved = localStorage.getItem('fi_wp_days');
+  if(_wpSaved){
+    wpDays = JSON.parse(_wpSaved);
+    if(wpDays.length){
+      renderWpDays();
+      document.getElementById('wp-days-box').style.display = 'block';
+    }
+  }
+} catch(e){}
+
+</script>
+</body>
+</html>
