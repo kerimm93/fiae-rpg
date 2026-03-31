@@ -837,7 +837,10 @@ var editModeId=null;
 function save(){
   S._lastExported = new Date().toISOString();
   try { localStorage.setItem(LKEY, JSON.stringify(S)); } catch(e){}
-  updateStats(); renderTable(); renderTGrid(); wkRender();
+  updateStats();
+renderTable();
+renderTGrid();
+if (typeof wkDraw === 'function') wkDraw();
   gistAutoSyncDebounced();
 }
 
@@ -1336,7 +1339,8 @@ function savePrefs(){
 function resetData(){
   if(!confirm('Wirklich alle Daten und custom Modi löschen?')) return;
   S.skills=[]; S.modes=[];
-  save(); updateFilters(); renderModes();
+  wkInit();
+save(); updateFilters(); renderModes();
   toast('☠️ Alles gelöscht.');
 }
 
@@ -2071,7 +2075,8 @@ function gistMerge() {
         S.modes.push(cm);
       }
     });
-    save(); updateFilters(); renderModes();
+    wkInit();
+save(); updateFilters(); renderModes();
     toast('⊕ Merge: ' + merged + ' neue Skills aus Cloud!');
   })
   .catch(function(e){ toast('Merge-Fehler: ' + e.message.slice(0,40)); });
@@ -2106,7 +2111,7 @@ function applyImportData(data) {
     try { localStorage.setItem('fi_wp_days', JSON.stringify(data.wpDays)); } catch(e){}
     wpDays = data.wpDays;
   }
-  // wkInit first so wkDraw() works when save() triggers wkRender()
+  // wkInit first so wkDraw() is safe when save() refreshes the world map
   wkInit();
   save(); updateFilters(); renderModes();
   if(wpDays && wpDays.length){ renderWpDays(); var wb = document.getElementById('wp-days-box'); if(wb) wb.style.display='block'; }
