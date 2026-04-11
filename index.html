@@ -731,6 +731,22 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
           <button class="btn btn-m btn-sm" onclick="gistPull(false)">⬇ Herunterladen</button>
           <button class="btn btn-t btn-sm" onclick="gistMerge()">⊕ Merge</button>
         </div>
+        <div class="notice info" style="margin-top:10px;">
+          <strong>Sync-Status:</strong> <span id="gist-sync-status">inaktiv</span><br>
+          Lokal exportiert: <span id="gist-local-exported">—</span><br>
+          Remote exportiert: <span id="gist-remote-exported">—</span><br>
+          Diagnose: <span id="gist-sync-reason">Noch kein Lauf</span>
+        </div>
+        <div id="gist-conflict-box" class="notice danger" style="display:none;margin-top:10px;">
+          <div style="font-weight:700;margin-bottom:6px;">⚠️ Sync-Konflikte erkannt</div>
+          <div id="gist-conflict-list" style="font-size:12px;line-height:1.5;margin-bottom:8px;"></div>
+          <div class="btn-row">
+            <button class="btn btn-q btn-sm" onclick="applyAllConflicts('local')">Alle lokal</button>
+            <button class="btn btn-m btn-sm" onclick="applyAllConflicts('remote')">Alle remote</button>
+            <button class="btn btn-v btn-sm" onclick="confirmConflictResolution()">Auswahl anwenden</button>
+            <button class="btn btn-d btn-sm" onclick="clearConflictUI()">Abbrechen</button>
+          </div>
+        </div>
       </div>
 
       <div class="qs">
@@ -890,6 +906,11 @@ var GIST_TOKEN_KEY = 'fi_gist_token';
 var GIST_ID_KEY    = 'fi_gist_id';
 var GIST_AUTO_KEY  = 'fi_gist_auto';
 var GIST_FILE      = 'fi_skill_tracker_data.json';
+var _syncInProgress = false;
+var _lastRemoteExported = '';
+var _lastSyncStatus = 'inaktiv';
+var _lastSyncReason = 'Noch kein Lauf';
+var _pendingConflicts = null;
 
 var sFilter='alle', tFilter='alle';
 var selSkills=new Set();
@@ -899,13 +920,17 @@ var Ps={1:'',2:'',3:'',f:'',fa:''};
 var editModeId=null;
 
 /* ─── PERSISTENCE ─── */
-function save(){
-  S._lastExported = new Date().toISOString();
+function persistLocalOnly(){
   try { localStorage.setItem(LKEY, JSON.stringify(S)); } catch(e){}
+}
+
+function save(){
+  persistLocalOnly();
   updateStats();
 renderTable();
 renderTGrid();
 if (typeof wkDraw === 'function') wkDraw();
+  updateSyncUI();
   gistAutoSyncDebounced();
 }
 
@@ -2171,6 +2196,142 @@ function wkAddDungeon(){
 function gistGetToken() { return localStorage.getItem(GIST_TOKEN_KEY) || ''; }
 function gistGetId()    { return localStorage.getItem(GIST_ID_KEY) || ''; }
 function gistGetAuto()  { return localStorage.getItem(GIST_AUTO_KEY) === '1'; }
+function githubHeaders(token, includeContentType) {
+  var h = { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' };
+  if(includeContentType) h['Content-Type'] = 'application/json';
+  return h;
+}
+function updateSyncUI(){
+  var s = document.getElementById('gist-sync-status');
+  var l = document.getElementById('gist-local-exported');
+  var r = document.getElementById('gist-remote-exported');
+  var d = document.getElementById('gist-sync-reason');
+  if(s) s.textContent = _lastSyncStatus;
+  if(l) l.textContent = S._lastExported || '—';
+  if(r) r.textContent = _lastRemoteExported || '—';
+  if(d) d.textContent = _lastSyncReason || '—';
+}
+function setSyncStatus(status, reason){
+  _lastSyncStatus = status || _lastSyncStatus;
+  _lastSyncReason = reason || _lastSyncReason;
+  updateSyncUI();
+}
+function getFullGistFileText(file, token){
+  if(!file) return Promise.reject(new Error('Datei nicht gefunden'));
+  if(file.truncated && file.raw_url){
+    return fetch(file.raw_url, { headers: githubHeaders(token, false) })
+      .then(function(r){ if(!r.ok) throw new Error('RAW HTTP ' + r.status); return r.text(); });
+  }
+  if(typeof file.content === 'string') return Promise.resolve(file.content);
+  return Promise.reject(new Error('Datei-Inhalt fehlt'));
+}
+function safeJsonParse(text){
+  var parsed;
+  try { parsed = JSON.parse(text); } catch(e) { return { ok:false, error:e }; }
+  return { ok:true, data:parsed };
+}
+function normData(data){
+  return {
+    skills: Array.isArray(data.skills) ? data.skills : [],
+    modes: Array.isArray(data.modes) ? data.modes : [],
+    prefs: data.prefs && typeof data.prefs === 'object' ? data.prefs : {},
+    dungeons: Array.isArray(data.dungeons) ? data.dungeons : [],
+    dayTracker: data.dayTracker && typeof data.dayTracker === 'object' ? data.dayTracker : {},
+    wpDays: Array.isArray(data.wpDays) ? data.wpDays : []
+  };
+}
+function dataStamp(data){
+  return (data && (data.exported || data._lastExported)) || '';
+}
+function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+function upsertById(base, incoming, path, conflicts){
+  var byId = {};
+  (base||[]).forEach(function(x){ byId[String(x.id)] = x; });
+  (incoming||[]).forEach(function(r){
+    var id = String(r.id);
+    var l = byId[id];
+    if(!l) { byId[id] = r; return; }
+    if(JSON.stringify(l) !== JSON.stringify(r)){
+      conflicts.push({ type:path, key:id, local:l, remote:r, resolution:'local' });
+    }
+  });
+  return Object.keys(byId).map(function(k){ return byId[k]; });
+}
+function mergeDayTracker(local, remote, conflicts){
+  var out = clone(local||{});
+  Object.keys(remote||{}).forEach(function(date){
+    var l = out[date], r = remote[date];
+    if(!l) { out[date] = r; return; }
+    var next = clone(l);
+    ['promptCopied','notesDone','skillsExtracted','skillsImported'].forEach(function(flag){
+      if(Boolean(l[flag]) !== Boolean(r[flag])){
+        conflicts.push({ type:'dayTracker.'+flag, key:date, local:l, remote:r, resolution:'local' });
+      } else {
+        next[flag] = Boolean(l[flag]) || Boolean(r[flag]);
+      }
+    });
+    if((l.diary||'') !== (r.diary||'')){
+      conflicts.push({ type:'dayTracker.diary', key:date, local:l, remote:r, resolution:'local' });
+    } else {
+      next.diary = l.diary || r.diary || '';
+    }
+    var set = new Set((l.log||[]).concat(r.log||[]));
+    next.log = Array.from(set);
+    next.updatedAt = (r.updatedAt > (l.updatedAt||'')) ? r.updatedAt : l.updatedAt;
+    out[date] = next;
+  });
+  return out;
+}
+function clearConflictUI(){
+  _pendingConflicts = null;
+  var box = document.getElementById('gist-conflict-box');
+  if(box) box.style.display = 'none';
+}
+function renderConflictUI(conflicts){
+  _pendingConflicts = conflicts;
+  var box = document.getElementById('gist-conflict-box');
+  var list = document.getElementById('gist-conflict-list');
+  if(!box || !list) return;
+  list.innerHTML = conflicts.map(function(c, i){
+    return '<div style="margin-bottom:6px;">'+
+      '<strong>'+esc(c.type)+' / '+esc(c.key)+'</strong><br>'+
+      '<label style="margin:4px 8px 0 0;display:inline-flex;align-items:center;gap:4px;"><input type="radio" name="cf_'+i+'" value="local" checked>lokal</label>'+
+      '<label style="margin:4px 0 0 0;display:inline-flex;align-items:center;gap:4px;"><input type="radio" name="cf_'+i+'" value="remote">remote</label>'+
+      '</div>';
+  }).join('');
+  box.style.display = 'block';
+}
+function applyAllConflicts(side){
+  if(!_pendingConflicts) return;
+  _pendingConflicts.forEach(function(_, i){
+    var el = document.querySelector('input[name="cf_'+i+'"][value="'+side+'"]');
+    if(el) el.checked = true;
+  });
+}
+function applyConflictChoices(data){
+  if(!_pendingConflicts || !_pendingConflicts.length) return data;
+  var out = clone(data);
+  _pendingConflicts.forEach(function(c, i){
+    var sel = document.querySelector('input[name="cf_'+i+'"]:checked');
+    var side = sel ? sel.value : c.resolution;
+    var pick = side === 'remote' ? c.remote : c.local;
+    if(c.type === 'skills'){
+      out.skills = out.skills.map(function(s){ return String(s.id) === c.key ? pick : s; });
+    } else if(c.type === 'modes'){
+      out.modes = out.modes.map(function(m){ return String(m.id) === c.key ? pick : m; });
+    } else if(c.type === 'dungeons'){
+      out.dungeons = out.dungeons.map(function(d){ return String(d.id) === c.key ? pick : d; });
+    } else if(c.type.indexOf('dayTracker.') === 0){
+      out.dayTracker[c.key] = pick;
+    }
+  });
+  return out;
+}
+function confirmConflictResolution(){
+  if(!_pendingConflicts) return;
+  if(!_pendingConflicts._applyFn) return;
+  _pendingConflicts._applyFn();
+}
 
 function gistBuildPayload() {
   var wpSaved = null;
@@ -2191,119 +2352,148 @@ function gistBuildPayload() {
 var gistAutoSyncTimer = null;
 function gistAutoSyncDebounced() {
   if(!gistGetAuto() || !gistGetToken() || !gistGetId()) return;
+  if(_syncInProgress) return;
   if(gistAutoSyncTimer) clearTimeout(gistAutoSyncTimer);
   gistAutoSyncTimer = setTimeout(function(){
     gistAutoSyncTimer = null;
-    gistPush(false);
+    gistSync('auto', { silent:true });
   }, 30000);
 }
 
 function gistPush(force) {
-  var token = gistGetToken(); var id = gistGetId();
-  if(!token || !id) { toast('⚠️ Gist nicht konfiguriert!'); return; }
-  if(force) { gistDoPush(token, id); return; }
-  fetch('https://api.github.com/gists/' + id, {
-    headers: { 'Authorization': 'token ' + token }
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(gist) {
-    var file = gist.files && (gist.files[GIST_FILE] || Object.values(gist.files)[0]);
-    if(!file || !file.content) { gistDoPush(token, id); return; }
-    var cloudData; try { cloudData = JSON.parse(file.content); } catch(e) { gistDoPush(token, id); return; }
-    var cloudTs = cloudData.exported || cloudData._lastExported || '';
-    var localTs = S._lastExported || '';
-    if(cloudTs > localTs) {
-      var proceed = confirm('Die Cloud-Version ist neuer als deine lokale Version.\n\nTrotzdem hochladen? (Abbrechen = Cloud herunterladen)');
-      if(proceed) { gistDoPush(token, id); }
-      else { gistPull(true); }
-    } else {
-      gistDoPush(token, id);
-    }
-  })
-  .catch(function(){ gistDoPush(token, id); });
+  gistSync(force ? 'push-force' : 'push', { silent:false });
 }
 
-function gistDoPush(token, id) {
-  var payload = JSON.stringify(gistBuildPayload(), null, 2);
-  fetch('https://api.github.com/gists/' + id, {
+function gistDoPush(token, id, payloadObj, syncStamp) {
+  var previous = S._lastExported || null;
+  S._lastExported = syncStamp;
+  persistLocalOnly();
+  var payload = JSON.stringify(payloadObj || gistBuildPayload(), null, 2);
+  return fetch('https://api.github.com/gists/' + id, {
     method: 'PATCH',
-    headers: { 'Authorization': 'token ' + token, 'Content-Type': 'application/json' },
+    headers: githubHeaders(token, true),
     body: JSON.stringify({ files: { [GIST_FILE]: { content: payload } } })
   })
-  .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); toast('☁️ Gist gespeichert!'); })
-  .catch(function(e){ toast('Gist-Fehler: ' + e.message.slice(0,40)); });
+  .then(function(r){
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    setSyncStatus('push', 'Cloud erfolgreich aktualisiert');
+    toast('☁️ Gist gespeichert!');
+  })
+  .catch(function(e){
+    S._lastExported = previous;
+    persistLocalOnly();
+    console.error('[Sync Schritt 4/PATCH]', e);
+    setSyncStatus('fehler', 'PATCH fehlgeschlagen: ' + e.message);
+    toast('Sync Schritt 4 (PATCH) fehlgeschlagen: ' + e.message.slice(0,60));
+  });
 }
 
 function gistPull(silent) {
-  var token = gistGetToken(); var id = gistGetId();
-  if(!token || !id) { if(!silent) toast('⚠️ Gist nicht konfiguriert!'); return; }
-  fetch('https://api.github.com/gists/' + id, {
-    headers: { 'Authorization': 'token ' + token }
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(gist) {
-    var file = gist.files && (gist.files[GIST_FILE] || Object.values(gist.files)[0]);
-    if(!file || !file.content) { toast('Gist leer oder Datei nicht gefunden.'); return; }
-    var data; try { data = JSON.parse(file.content); } catch(e) { toast('Gist: JSON-Fehler'); return; }
-    applyImportData(data);
-    if(!silent) toast('⬇️ Cloud geladen: ' + (data.skills||[]).length + ' Skills!');
-  })
-  .catch(function(e){ toast('Gist-Fehler: ' + e.message.slice(0,40)); });
+  gistSync('pull', { silent:!!silent });
 }
 
 function gistMerge() {
-  var token = gistGetToken(); var id = gistGetId();
-  if(!token || !id) { toast('⚠️ Gist nicht konfiguriert!'); return; }
-  fetch('https://api.github.com/gists/' + id, {
-    headers: { 'Authorization': 'token ' + token }
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(gist) {
-    var file = gist.files && (gist.files[GIST_FILE] || Object.values(gist.files)[0]);
-    if(!file || !file.content) { gistDoPush(token, id); return; }
-    var cloud; try { cloud = JSON.parse(file.content); } catch(e) { return; }
-    // Merge: add items from cloud that don't exist locally (by id)
-    var merged = 0;
-    (cloud.skills||[]).forEach(function(cs){
-      if(!S.skills.some(function(ls){ return ls.id == cs.id; })){
-        S.skills.push(cs); merged++;
+  gistSync('merge', { silent:false });
+}
+function gistSync(mode, opts){
+  opts = opts || {};
+  var silent = !!opts.silent;
+  if(_syncInProgress){
+    setSyncStatus('skip', 'Bereits ein Sync aktiv');
+    return Promise.resolve(false);
+  }
+  var token = gistGetToken(), id = gistGetId();
+  if(!token || !id){
+    if(!silent) toast('⚠️ Gist nicht konfiguriert!');
+    setSyncStatus('skip', 'Token/Gist-ID fehlen');
+    return Promise.resolve(false);
+  }
+  _syncInProgress = true;
+  setSyncStatus('läuft', 'Sync gestartet ('+mode+')');
+  return fetch('https://api.github.com/gists/' + id, { headers: githubHeaders(token, false) })
+    .then(function(r){ if(!r.ok) throw new Error('Schritt 1 (GET) HTTP ' + r.status); return r.json(); })
+    .then(function(gist){
+      var file = gist.files && (gist.files[GIST_FILE] || Object.values(gist.files)[0]);
+      if(!file){
+        if(mode === 'push' || mode === 'push-force' || mode === 'auto'){ return { remote:null, text:'{}' }; }
+        throw new Error('Datei im Gist nicht gefunden');
       }
-    });
-    (cloud.modes||[]).forEach(function(cm){
-      if(!S.modes.some(function(lm){ return lm.id == cm.id; })){
-        S.modes.push(cm);
+      return getFullGistFileText(file, token).then(function(text){ return { remote:file, text:text }; });
+    })
+    .then(function(ctx){
+      var parsed = safeJsonParse(ctx.text || '{}');
+      if(!parsed.ok){
+        console.error('[Sync Schritt 2/JSON]', parsed.error);
+        throw new Error('Schritt 2 (JSON/Parse) fehlgeschlagen');
       }
-    });
-    // Merge dayTracker: for each date, union flags (true wins) and append new log entries
-    var cloudTracker = cloud.dayTracker || {};
-    if(!S.dayTracker) S.dayTracker = {};
-    Object.keys(cloudTracker).forEach(function(date){
-      var remote = cloudTracker[date];
-      if(!remote) return;
-      var local = S.dayTracker[date];
-      if(!local){
-        S.dayTracker[date] = remote;
+      var remoteRaw = parsed.data || {};
+      _lastRemoteExported = dataStamp(remoteRaw) || _lastRemoteExported;
+      var local = normData(S), remote = normData(remoteRaw);
+      var conflicts = [];
+      var merged = {
+        skills: upsertById(local.skills, remote.skills, 'skills', conflicts),
+        modes: upsertById(local.modes, remote.modes, 'modes', conflicts),
+        dungeons: upsertById(local.dungeons, remote.dungeons, 'dungeons', conflicts),
+        dayTracker: mergeDayTracker(local.dayTracker, remote.dayTracker, conflicts),
+        prefs: Object.keys(remote.prefs||{}).length ? remote.prefs : local.prefs,
+        wpDays: (remote.wpDays && remote.wpDays.length) ? remote.wpDays : local.wpDays
+      };
+      var remoteComparable = normData(remoteRaw);
+      var didChange = JSON.stringify(local) !== JSON.stringify(merged);
+      var targetDiffersFromRemote = JSON.stringify(merged) !== JSON.stringify(remoteComparable);
+      var needsPush = (mode === 'push-force') || (mode !== 'pull' && targetDiffersFromRemote);
+      if(mode === 'pull') needsPush = false;
+      if(conflicts.length && mode !== 'push-force'){
+        console.error('[Sync Schritt 3/Merge] Konflikte erkannt:', conflicts);
+        _pendingConflicts = conflicts;
+        _pendingConflicts._applyFn = function(){
+          var resolved = applyConflictChoices(merged);
+          applyImportData(resolved, {silent:true, skipSync:true});
+          clearConflictUI();
+          setSyncStatus('merge', 'Konflikte manuell gelöst');
+          if(!silent) toast('Konflikte angewendet.');
+        };
+        renderConflictUI(conflicts);
+        setSyncStatus('konflikt', conflicts.length + ' Konflikte – bitte auswählen');
+        if(!silent) toast('Sync gestoppt: Konflikte erkannt.');
+        return false;
+      }
+      if(mode === 'pull'){
+        applyImportData(merged, {silent:true, skipSync:true});
+        setSyncStatus('pull', 'Remote übernommen');
+        if(!silent) toast('⬇️ Cloud geladen');
+        return true;
+      }
+      if(didChange){
+        applyImportData(merged, {silent:true, skipSync:true});
+      }
+      if(needsPush){
+        var syncStamp = new Date().toISOString();
+        var payload = gistBuildPayload();
+        payload.exported = syncStamp;
+        payload._lastExported = syncStamp;
+        return gistDoPush(token, id, payload, syncStamp);
+      }
+      if(!didChange && !needsPush){
+        setSyncStatus('no-op', 'Keine Änderungen (echter No-Op)');
       } else {
-        // OR-merge boolean flags
-        local.promptCopied    = local.promptCopied    || remote.promptCopied;
-        local.notesDone       = local.notesDone       || remote.notesDone;
-        local.skillsExtracted = local.skillsExtracted || remote.skillsExtracted;
-        local.skillsImported  = local.skillsImported  || remote.skillsImported;
-        // Merge diary: keep longer version
-        if((remote.diary||'').length > (local.diary||'').length) local.diary = remote.diary;
-        // Append log entries not already present
-        var localLogSet = new Set(local.log||[]);
-        (remote.log||[]).forEach(function(entry){
-          if(!localLogSet.has(entry)){ (local.log = local.log||[]).push(entry); }
-        });
-        if(remote.updatedAt > (local.updatedAt||'')) local.updatedAt = remote.updatedAt;
+        setSyncStatus('merge', needsPush ? 'Zielstand unterscheidet sich von Remote' : 'Lokaler Merge ohne Push');
       }
+      if(!silent && !didChange && !needsPush) toast('ℹ️ Keine Sync-Änderung nötig.');
+      return true;
+    })
+    .catch(function(e){
+      if(String(e.message||'').indexOf('Schritt 1') >= 0) console.error('[Sync Schritt 1/GET]', e);
+      else if(String(e.message||'').indexOf('Schritt 2') >= 0) console.error('[Sync Schritt 2/JSON]', e);
+      else console.error('[Sync Fehler]', e);
+      setSyncStatus('fehler', e.message);
+      if(!silent) toast('Sync-Fehler: ' + e.message.slice(0,80));
+      return false;
+    })
+    .finally(function(){
+      _syncInProgress = false;
+      updateSyncUI();
     });
-    wkInit();
-save(); updateFilters(); renderModes();
-    toast('⊕ Merge: ' + merged + ' neue Skills aus Cloud!');
-  })
-  .catch(function(e){ toast('Merge-Fehler: ' + e.message.slice(0,40)); });
 }
 
 function gistSaveSettings() {
@@ -2325,10 +2515,12 @@ function gistLoadSettings() {
   if(af) af.checked = gistGetAuto();
 }
 
-function applyImportData(data) {
+function applyImportData(data, opts) {
+  opts = opts || {};
   if(!data || !Array.isArray(data.skills)) { toast('Ungültige Daten.'); return; }
   S.skills = data.skills || [];
   S.modes  = data.modes  || [];
+  if(data._lastExported || data.exported) S._lastExported = data._lastExported || data.exported;
   if(data.prefs) S.prefs = data.prefs;
   if(data.dungeons && Array.isArray(data.dungeons) && data.dungeons.length) S.dungeons = data.dungeons;
   if(data.dayTracker && typeof data.dayTracker === 'object') S.dayTracker = data.dayTracker;
@@ -2338,7 +2530,13 @@ function applyImportData(data) {
   }
   // wkInit first so wkDraw() is safe when save() refreshes the world map
   wkInit();
-  save(); updateFilters(); renderModes();
+  if(!opts.skipSync){
+    save();
+  } else {
+    persistLocalOnly();
+    updateStats(); renderTable(); renderTGrid(); updateFilters(); renderModes();
+    if (typeof wkDraw === 'function') wkDraw();
+  }
   if(wpDays && wpDays.length){ renderWpDays(); var wb = document.getElementById('wp-days-box'); if(wb) wb.style.display='block'; }
   var pb = document.getElementById('pref-beruf'); var pk = document.getElementById('pref-kurs');
   if(pb && S.prefs){ pb.value = S.prefs.beruf||''; pk.value = S.prefs.kurs||''; }
@@ -2591,19 +2789,27 @@ function sidebarNav(tabId) {
   else switchTab(tabId, {classList:{add:function(){},remove:function(){},toggle:function(){}}});
 }
 
-// INIT
-load(); setStep(1); wkInit(); gistLoadSettings();
-// Restore Wochenkampagne
-try {
-  var _wpSaved = localStorage.getItem('fi_wp_days');
-  if(_wpSaved){
-    wpDays = JSON.parse(_wpSaved);
-    if(wpDays.length){
-      renderWpDays();
-      document.getElementById('wp-days-box').style.display = 'block';
+async function initApp(){
+  load(); setStep(1); wkInit(); gistLoadSettings();
+  // Restore Wochenkampagne
+  try {
+    var _wpSaved = localStorage.getItem('fi_wp_days');
+    if(_wpSaved){
+      wpDays = JSON.parse(_wpSaved);
+      if(wpDays.length){
+        renderWpDays();
+        document.getElementById('wp-days-box').style.display = 'block';
+      }
     }
+  } catch(e){}
+  updateSyncUI();
+  try {
+    await gistSync('auto', { silent:true, startup:true });
+  } catch(e){
+    console.error('[Startup Sync]', e);
   }
-} catch(e){}
+}
+initApp();
 
 </script>
 </body>
