@@ -377,7 +377,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 
   <div class="stat-bar">
     <div class="sc"><span class="sico">⚔️</span><span class="sval" id="stat-total">0</span><span class="slbl">Skills</span></div>
-    <div class="sc"><span class="sico">📚</span><span class="sval" id="stat-faecher">0</span><span class="slbl">Fächer</span></div>
+    <div class="sc"><span class="sico">📚</span><span class="sval" id="stat-faecher">0</span><span class="slbl">Disziplinen</span></div>
     <div class="sc"><span class="sico">⭐</span><span class="sval" id="stat-avg">—</span><span class="slbl">Ø Level</span></div>
     <div class="sc"><span class="sico">🏆</span><span class="sval" id="stat-mastered">0</span><span class="slbl">Meister</span></div>
   </div>
@@ -438,8 +438,8 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 
       <div class="qs locked" id="qs4">
         <div class="qh"><span class="qi">⚔️</span> Schritt IV — Neue Skills eintragen</div>
-        <div class="notice">Format: <strong>SkillName | Fach | Kurzbeschreibung</strong> — eine Zeile pro Skill.</div>
-        <textarea id="new-in" rows="5" placeholder="Subnetting | Netzwerktechnik | IP in Teilnetze aufteilen&#10;for-Schleife | Programmierung | Wiederholende Codeausführung"></textarea>
+        <div class="notice">Format: <strong>SkillName | Kontext | Disziplin::Skill-Familie | Kurzbeschreibung</strong> — eine Zeile pro Skill (altes 3-Spalten-Format bleibt erlaubt).</div>
+        <textarea id="new-in" rows="5" placeholder="Subnetting | ITT-Net-IS | Netzwerktechnik::Adressierung | IP in Teilnetze aufteilen&#10;for-Schleife | FIAE-AnwP-GUI | Programmierung::Kontrollstrukturen | Wiederholende Codeausführung"></textarea>
         <div style="margin-top:10px;">
           <span class="slabel">Datum des Unterrichtstages</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
@@ -518,7 +518,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
       <div class="filter-row" id="sfb"><button class="fp active" onclick="fSkills('alle',this)">Alle</button></div>
       <div style="overflow-x:auto;">
         <table class="skill-table">
-          <thead><tr><th>Skill</th><th>Fach</th><th>Level</th><th>XP</th><th>Datum</th></tr></thead>
+          <thead><tr><th>Skill</th><th>Disziplin</th><th>Level</th><th>XP</th><th>Datum</th></tr></thead>
           <tbody id="stbody"></tbody>
         </table>
       </div>
@@ -560,8 +560,8 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
               <div class="pdesc">Prompt kopieren, nur Dateien anhängen</div>
             </div>
           </div>
-          <span class="slabel">Fach (optional)</span>
-          <input type="text" id="sf-fach" placeholder="z.B. Netzwerktechnik" style="width:100%; margin-bottom:10px;">
+          <span class="slabel">Kontext (optional)</span>
+          <input type="text" id="sf-fach" placeholder="z.B. FIAE-AnwP-GUI" style="width:100%; margin-bottom:10px;">
           <div id="sf-text-area">
             <span class="slabel">Material-Text</span>
             <textarea id="sf-material" rows="8" placeholder="Hier Text aus Folien, Skript, Mitschrift einfügen..."></textarea>
@@ -579,7 +579,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
         <div class="qs">
           <div class="qh"><span class="qi">🌾</span> Geerntete Skills einfügen</div>
           <div class="notice">Füge das Ergebnis aus dem Chat hier ein. Danach kannst du direkt den Abgleich-Prompt generieren, um Duplikate zu entfernen.</div>
-          <textarea id="sf-result" rows="6" placeholder="SkillName | Fach | Kurzbeschreibung&#10;..."></textarea>
+          <textarea id="sf-result" rows="6" placeholder="SkillName | Kontext | Disziplin::Skill-Familie | Kurzbeschreibung&#10;..."></textarea>
           <div class="btn-row">
             <button class="btn btn-m" onclick="genFarmerAbgleich()">▶ Abgleich-Prompt</button>
             <button class="btn btn-s" id="cpfa" onclick="copyP('fa')" disabled>⧉ Kopieren</button>
@@ -986,6 +986,7 @@ function load(){
   Object.keys(S.dayTracker).forEach(function(d){
     S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
   });
+  S.skills = S.skills.map(normalizeSkillShape).filter(function(s){ return s && s.name; });
   var pb=document.getElementById('pref-beruf');
   var pk=document.getElementById('pref-kurs');
   if(pb) { pb.value=S.prefs.beruf||''; pk.value=S.prefs.kurs||''; }
@@ -999,6 +1000,135 @@ function esc(s) {
   if(!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function skillDisziplin(skill){
+  return (skill && (skill.disziplin || skill.fach)) ? (skill.disziplin || skill.fach) : 'Allgemein';
+}
+function parseSkillFamilieField(raw){
+  var v = (raw||'').trim();
+  if(!v) return { disziplin:'', skillFamilie:'' };
+  if(v.indexOf('::') >= 0){
+    return { disziplin:v.split('::')[0].trim(), skillFamilie:v };
+  }
+  return { disziplin:v, skillFamilie:v };
+}
+function normalizeSkillShape(skill){
+  if(!skill || typeof skill !== 'object') return null;
+  var out = Object.assign({}, skill);
+  out.id = out.id || (Date.now()+Math.random());
+  out.name = (out.name||'').trim();
+  out.kontext = (out.kontext||'').trim();
+  out.disziplin = (out.disziplin||'').trim();
+  out.skillFamilie = (out.skillFamilie||'').trim();
+  out.fach = (out.fach||'').trim();
+  if(!out.disziplin && out.fach) out.disziplin = out.fach;
+  if(!out.fach && out.disziplin) out.fach = out.disziplin;
+  if(!out.skillFamilie) out.skillFamilie = '';
+  if(!out.kontext) out.kontext = '';
+  out.beschreibung = out.beschreibung || '';
+  out.datum = out.datum || today();
+  out.level = parseInt(out.level)||0;
+  out.xp = parseInt(out.xp)||0;
+  out.sessions = parseInt(out.sessions)||0;
+  return out;
+}
+function parseSkillLine(line, fallbackDate, fallbackKontext){
+  var p = line.split('|').map(function(x){ return x.trim(); });
+  if(p.length < 2 || !p[0]) return null;
+  var sk = {
+    id: Date.now()+Math.random(),
+    name: p[0],
+    kontext: '',
+    disziplin: '',
+    skillFamilie: '',
+    fach: '',
+    beschreibung: '',
+    datum: fallbackDate || today(),
+    level: 0,
+    xp: 0,
+    sessions: 0
+  };
+  if(p.length >= 4){
+    var fam = parseSkillFamilieField(p[2]);
+    sk.kontext = p[1] || (fallbackKontext||'');
+    sk.disziplin = fam.disziplin;
+    sk.skillFamilie = fam.skillFamilie;
+    sk.beschreibung = p.slice(3).join(' | ') || '';
+    sk.fach = sk.disziplin; // Legacy mirror
+  } else {
+    sk.disziplin = p[1] || 'Allgemein';
+    sk.fach = sk.disziplin;
+    sk.beschreibung = p[2] || '';
+    sk.kontext = fallbackKontext || '';
+    sk.skillFamilie = '';
+  }
+  return normalizeSkillShape(sk);
+}
+var SKILL_IMPORT_DEFINITION_BLOCK = [
+  'FORMAT (exakt, eine Zeile pro Skill):',
+  'SkillName | Kontext | Disziplin::Skill-Familie | Kurzbeschreibung',
+  '',
+  'BEDEUTUNG DER SPALTEN',
+  '',
+  '1. SkillName',
+  '- Der konkrete lernbare Skill, Begriff, Mechanismus, Befehl, Technik oder das Konzept',
+  '- Kurz und präzise benennen',
+  '- Keine ganzen Sätze',
+  '- Keine Oberkategorien als SkillName',
+  '',
+  '2. Kontext',
+  '- Der konkrete Lern- oder Arbeitskontext, in dem der Skill vorkam',
+  '- Das ist NICHT die fachliche Oberkategorie',
+  '- Der Kontext beantwortet die Frage: Woher stammt dieser Skill?',
+  '- Beispiele:',
+  '  - FIAE-AnwP-GUI',
+  '  - ITT-Net-IS',
+  '  - Privatprojekt Nabokov',
+  '  - Eigenstudium',
+  '  - Bewerbungen',
+  '',
+  '3. Disziplin::Skill-Familie',
+  '- Disziplin = fachliche Oberkategorie',
+  '- Skill-Familie = feinere Untergruppe innerhalb der Disziplin',
+  '- Immer im Format:',
+  '  Disziplin::Skill-Familie',
+  '- Beispiele:',
+  '  - Programmierung::GUI',
+  '  - Programmierung::Kontrollstrukturen',
+  '  - Netzwerktechnik::Routing',
+  '  - IT-Sicherheit::Authentifizierung',
+  '  - Datenbanken::SQL-Grundlagen',
+  '',
+  'Wichtig:',
+  '- Der Teil vor :: ist die Disziplin',
+  '- Der Teil nach :: ist die Skill-Familie',
+  '- Beides zusammen muss in einer einzigen Spalte stehen',
+  '- Kontext und Disziplin sind niemals dasselbe Feld',
+  '',
+  '4. Kurzbeschreibung',
+  '- Maximal 1 kurzer Satz',
+  '- Beschreibt knapp, was der Skill bedeutet oder wozu er dient',
+  '- Keine langen Erklärungen',
+  '',
+  'WICHTIGE ABGRENZUNG',
+  '- Kontext = Unterrichtsmodul, Projekt oder Lernumgebung',
+  '- Disziplin = fachliche Oberkategorie',
+  '- Skill-Familie = Untergruppe innerhalb der Disziplin',
+  '- Kontext und Disziplin dürfen nicht vermischt werden',
+  '',
+  'WENN DU UNSICHER BIST',
+  '- Wähle lieber einen konkreten Kontext als einen zu allgemeinen',
+  '- Wähle lieber eine breitere Disziplin als eine falsche Spezialkategorie',
+  '- Wenn die Skill-Familie unklar ist, bilde trotzdem eine plausible Familie innerhalb der Disziplin',
+  '- Vermische niemals Kontext und Disziplin',
+  '',
+  'REGELN',
+  '- Keine Nummerierung',
+  '- Keine Überschriften',
+  '- Keine Zusatzkommentare',
+  '- Keine Duplikate',
+  '- Pro Zeile genau 4 Spalten',
+  '- Nur das geforderte Format ausgeben'
+].join('\n');
 
 function toast(m){
   const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
@@ -1020,7 +1150,7 @@ function fCol(f){
 function updateStats(){
   const ss=S.skills;
   document.getElementById('stat-total').textContent=ss.length;
-  document.getElementById('stat-faecher').textContent=new Set(ss.map(s=>s.fach)).size;
+  document.getElementById('stat-faecher').textContent=new Set(ss.map(skillDisziplin)).size;
   document.getElementById('stat-mastered').textContent=ss.filter(s=>(s.level||0)>=4).length;
   if(ss.length>0){
     const avg=ss.reduce((a,s)=>a+(s.level||0),0)/ss.length;
@@ -1098,13 +1228,11 @@ Aufgabe: Analysiere alle Canvas-Dateien und den Chat-Verlauf (das Datum steht im
 
 Liste alle Fachbegriffe, Konzepte, Techniken, Befehle und Methoden auf, die heute besprochen wurden.
 
-Format (exakt, eine Zeile pro Skill):
-SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+${SKILL_IMPORT_DEFINITION_BLOCK}
 
 Regeln:
 - Erste Zeile: DATUM: [Datum des Unterrichtstages aus dem Chat, z.B. DATUM: 18.03.2026] — nicht das heutige Datum
 - Dann: Nur konkrete, lernbare Skills
-- Fach aus Kontext ableiten (z.B. Netzwerktechnik, Programmierung, IT-Sicherheit, WiSo)
 - Keine Duplikate, keine Nummerierung
 - Nur DATUM-Zeile + Liste ausgeben`;
   Ps[1]=p;
@@ -1138,8 +1266,7 @@ ${raw}
 
 Aufgabe: Welche Skills sind WIRKLICH NEU — also noch nicht (oder nicht als Synonym) in der Datenbank?
 
-Format (exakt, eine Zeile pro neuem Skill):
-SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+${SKILL_IMPORT_DEFINITION_BLOCK}
 
 Regeln:
 - Nur neue Skills ausgeben
@@ -1176,14 +1303,14 @@ function saveSkills(){
   setStep(5);
   const s5=document.getElementById('si5'); s5.classList.remove('active'); s5.classList.add('done'); s5.querySelector('.sn').textContent='✓';
 }
-function ingestSkillLines(raw, extractedDate){
+function ingestSkillLines(raw, extractedDate, fallbackKontext){
   let added=0;
   raw.split('\n').map(l=>l.trim()).filter(Boolean).forEach(line=>{
     if(/^DATUM:/i.test(line)) return; // skip date line
-    const p=line.split('|').map(x=>x.trim());
-    if(p.length<2||!p[0]) return;
-    if(S.skills.some(s=>s.name.toLowerCase()===p[0].toLowerCase())) return;
-    S.skills.push({id:Date.now()+Math.random(),name:p[0],fach:p[1]||'Allgemein',beschreibung:p[2]||'',datum:extractedDate||today(),level:0,xp:0,sessions:0});
+    var parsed = parseSkillLine(line, extractedDate||today(), fallbackKontext||'');
+    if(!parsed || !parsed.name) return;
+    if(S.skills.some(s=>String(s.name||'').toLowerCase()===parsed.name.toLowerCase())) return;
+    S.skills.push(parsed);
     added++;
   });
   return added;
@@ -1213,7 +1340,7 @@ function copyP(n){
 
 /* ─── FILTERS ─── */
 function updateFilters(){
-  const faecher=[...new Set(S.skills.map(s=>s.fach))].sort();
+  const faecher=[...new Set(S.skills.map(skillDisziplin))].sort();
   const sfb=document.getElementById('sfb');
   sfb.innerHTML='<button class="fp active" onclick="fSkills(\'alle\',this)">Alle</button>';
   faecher.forEach(f=>{ const b=document.createElement('button'); b.className='fp'; b.textContent=f; b.onclick=function(){fSkills(f,this);}; sfb.appendChild(b); });
@@ -1238,22 +1365,23 @@ function fTrain(f,btn){
 function renderTable(){
   const tbody=document.getElementById('stbody');
   const empty=document.getElementById('stempty');
-  const fl=sFilter==='alle'?S.skills:S.skills.filter(s=>s.fach===sFilter);
+  const fl=sFilter==='alle'?S.skills:S.skills.filter(s=>skillDisziplin(s)===sFilter);
   if(!fl.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
-  const allFaecher=[...new Set(S.skills.map(s=>s.fach))].sort();
+  const allFaecher=[...new Set(S.skills.map(skillDisziplin))].sort();
   tbody.innerHTML=fl.map(s=>{
-    const c=fCol(s.fach); const lvl=Math.min(s.level||0,4); const xpPct=Math.min(100,(s.xp||0)*20);
-    const fachOpts = allFaecher.map(f=>`<option value="${esc(f)}" ${f===s.fach?'selected':''}>${esc(f)}</option>`).join('');
+    const disziplin = skillDisziplin(s);
+    const c=fCol(disziplin); const lvl=Math.min(s.level||0,4); const xpPct=Math.min(100,(s.xp||0)*20);
+    const fachOpts = allFaecher.map(f=>`<option value="${esc(f)}" ${f===disziplin?'selected':''}>${esc(f)}</option>`).join('');
     return `<tr>
       <td><strong style="font-family:var(--display);font-size:19px;">${s.name}</strong>
         <div style="font-family:var(--display);font-size:15px;color:var(--ink-light);">${s.beschreibung||''}</div></td>
       <td>
-        <span class="fach-badge" style="background:${c.bg};color:${c.fg};border-color:${c.bd};">${s.fach}</span>
+        <span class="fach-badge" style="background:${c.bg};color:${c.fg};border-color:${c.bd};">${disziplin}</span>
         <div style="margin-top:6px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
           <select onchange="skillChangeFach(${s.id},this.value)" style="font-size:12px;padding:3px 6px;min-height:28px;background:var(--surface-2);border:1px solid var(--border);color:var(--ink);border-radius:4px;max-width:160px;">
             ${fachOpts}
-            <option value="__new__">+ Neues Fach…</option>
+            <option value="__new__">+ Neue Disziplin…</option>
           </select>
         </div>
       </td>
@@ -1268,14 +1396,15 @@ function renderTable(){
 /* ─── TRAINING GRID ─── */
 function renderTGrid(){
   const g=document.getElementById('tgrid');
-  const fl=tFilter==='alle'?S.skills:S.skills.filter(s=>s.fach===tFilter);
+  const fl=tFilter==='alle'?S.skills:S.skills.filter(s=>skillDisziplin(s)===tFilter);
   if(!fl.length){ g.innerHTML='<div class="empty-st" style="grid-column:1/-1;padding:20px;">Keine Skills vorhanden.</div>'; return; }
   g.innerHTML=fl.map(s=>{
-    const sel=selSkills.has(s.id); const c=fCol(s.fach);
+    const disziplin = skillDisziplin(s);
+    const sel=selSkills.has(s.id); const c=fCol(disziplin);
     return `<div class="sk-tile ${sel?'sel':''}" onclick="togSk(${s.id})">
       <div class="sk-check">${sel?'✓':''}</div>
       <div><div class="sk-name">${s.name}</div>
-        <div class="sk-meta" style="color:${c.bg};">${s.fach} · ${LV[Math.min(s.level||0,4)]}</div></div>
+        <div class="sk-meta" style="color:${c.bg};">${disziplin} · ${LV[Math.min(s.level||0,4)]}</div></div>
     </div>`;
   }).join('');
 }
@@ -1317,7 +1446,7 @@ function genTrainP(){
   const beruf=S.prefs.beruf||'Fachinformatiker';
   const mode=allModes().find(m=>m.id===selMode)||allModes()[0];
 
-  const skillList=skills.map(s=>`- ${s.name} (${s.fach}): ${s.beschreibung||'siehe Kontext'}`).join('\n');
+  const skillList=skills.map(s=>`- ${s.name} (${skillDisziplin(s)}): ${s.beschreibung||'siehe Kontext'}`).join('\n');
 
   let platformSuffix='';
   if(selPlat_==='claude'){
@@ -1399,13 +1528,13 @@ function genFarmerP(){
   const mat=document.getElementById('sf-material').value.trim();
   if(!mat){toast('Bitte Material einfügen!');return;}
   const typ=document.getElementById('sf-type').value;
-  const fach=document.getElementById('sf-fach').value.trim();
+  const kontext=document.getElementById('sf-fach').value.trim();
   const beruf=S.prefs.beruf||'Fachinformatiker';
   const typLabel={folie:'Präsentationsfolien',skript:'Skript / Lehrtext',notizen:'Mitschrift',aufgaben:'Aufgabenblatt',mixed:'gemischtes Material'}[typ]||typ;
 
   const p=`Du bist mein Skill-Extraktions-Assistent für die Umschulung zum ${beruf}.
 
-Quellentyp: ${typLabel}${fach?'\nFach-Kontext: '+fach:''}
+Quellentyp: ${typLabel}${kontext?'\nKontext-Hinweis: '+kontext:''}
 
 Material:
 ---
@@ -1414,12 +1543,11 @@ ${mat}
 
 Aufgabe: Extrahiere alle lernbaren Skills aus diesem Material.
 
-Format (exakt, eine Zeile pro Skill):
-SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+${SKILL_IMPORT_DEFINITION_BLOCK}
 
 Regeln:
 - Nur konkrete, lernbare Konzepte, Techniken, Befehle, Methoden
-- Fach aus Kontext ableiten${fach?' (bevorzuge: '+fach+')':''}
+- Kontext aus Material ableiten${kontext?' (bevorzuge: '+kontext+')':''}
 - Keine Meta-Infos über das Dokument selbst
 - Keine Duplikate, keine Nummerierung
 - Nur die Liste ausgeben`;
@@ -1443,8 +1571,7 @@ ${raw}
 
 Aufgabe: Welche Skills sind WIRKLICH NEU (noch nicht in der Datenbank)?
 
-Format (exakt, eine Zeile pro neuem Skill):
-SkillName | Fach | Kurzbeschreibung (max. 1 Satz)
+${SKILL_IMPORT_DEFINITION_BLOCK}
 
 Regeln:
 - Nur neue Skills ausgeben (auch Synonyme berücksichtigen)
@@ -1458,7 +1585,8 @@ Regeln:
 function saveFarmerSkills(){
   const raw=document.getElementById('sf-new').value.trim();
   if(!raw){toast('Bitte Skills einfügen!');return;}
-  const added=ingestSkillLines(raw);
+  const kontext=document.getElementById('sf-fach').value.trim();
+  const added=ingestSkillLines(raw, today(), kontext);
   save(); updateFilters();
   document.getElementById('sf-new').value='';
   toast('🌾 '+added+' Skills geerntet und eingeschrieben!');
@@ -1466,8 +1594,18 @@ function saveFarmerSkills(){
 
 /* ─── DATA ─── */
 function exportCSV(){
-  const hdr=['Name','Fach','Beschreibung','Datum','Level','Level-Name','XP','Sessions'].join(';');
-  const rows=S.skills.map(s=>[`"${s.name}"`,`"${s.fach}"`,`"${(s.beschreibung||'').replace(/"/g,'""')}"`,`"${s.datum}"`,s.level||0,`"${LV[Math.min(s.level||0,4)]}"`,s.xp||0,s.sessions||0].join(';'));
+  const hdr=['SkillName','Kontext','Disziplin','Skill-Familie','Kurzbeschreibung','Datum','Level','XP','Sessions'].join(';');
+  const rows=S.skills.map(s=>[
+    `"${(s.name||'').replace(/"/g,'""')}"`,
+    `"${(s.kontext||'').replace(/"/g,'""')}"`,
+    `"${skillDisziplin(s).replace(/"/g,'""')}"`,
+    `"${(s.skillFamilie||'').replace(/"/g,'""')}"`,
+    `"${(s.beschreibung||'').replace(/"/g,'""')}"`,
+    `"${s.datum||''}"`,
+    s.level||0,
+    s.xp||0,
+    s.sessions||0
+  ].join(';'));
   const csv=[hdr,...rows].join('\n');
   const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
@@ -1482,10 +1620,41 @@ function importCSV(input){
     const lines=text.split('\n').filter(Boolean);
     if(lines.length<2){toast('CSV scheint leer.');return;}
     const imp=[];
+    const header = lines[0].split(';').map(function(x){ return x.replace(/^"|"$/g,'').trim().toLowerCase(); });
+    const isNew = header.indexOf('skillname') >= 0 && header.indexOf('disziplin') >= 0;
     for(let i=1;i<lines.length;i++){
       const p=lines[i].split(';').map(x=>x.replace(/^"|"$/g,'').trim());
-      if(p.length<4) continue;
-      imp.push({id:Date.now()+Math.random()+i,name:p[0],fach:p[1],beschreibung:p[2],datum:p[3],level:parseInt(p[4])||0,xp:parseInt(p[6])||0,sessions:parseInt(p[7])||0});
+      if(isNew){
+        if(p.length<6 || !p[0]) continue;
+        imp.push(normalizeSkillShape({
+          id:Date.now()+Math.random()+i,
+          name:p[0],
+          kontext:p[1]||'',
+          disziplin:p[2]||'',
+          fach:p[2]||'',
+          skillFamilie:p[3]||'',
+          beschreibung:p[4]||'',
+          datum:p[5]||today(),
+          level:parseInt(p[6])||0,
+          xp:parseInt(p[7])||0,
+          sessions:parseInt(p[8])||0
+        }));
+      } else {
+        if(p.length<4 || !p[0]) continue;
+        imp.push(normalizeSkillShape({
+          id:Date.now()+Math.random()+i,
+          name:p[0],
+          fach:p[1]||'Allgemein',
+          disziplin:p[1]||'Allgemein',
+          kontext:'',
+          skillFamilie:'',
+          beschreibung:p[2]||'',
+          datum:p[3]||today(),
+          level:parseInt(p[4])||0,
+          xp:parseInt(p[6])||0,
+          sessions:parseInt(p[7])||0
+        }));
+      }
     }
     S.skills=imp; save(); updateFilters();
     toast('📂 '+imp.length+' Skills importiert!');
@@ -1557,7 +1726,10 @@ var BASE_PROMPT = [
   '## TAGESABSCHLUSS: SKILL-EXTRAKTION',
   'Wenn ich "Skills extrahieren" sage:',
   'Liste alle Fachbegriffe, Konzepte, Techniken und Methoden des Tages.',
-  'Format: SkillName | Fach | Kurzbeschreibung (max. 1 Satz)',
+  'Format: SkillName | Kontext | Disziplin::Skill-Familie | Kurzbeschreibung',
+  'Kontext = konkreter Lern-/Arbeitskontext (z.B. FIAE-AnwP-GUI, ITT-Net-IS, Eigenstudium).',
+  'Disziplin = fachliche Oberkategorie; Skill-Familie = Untergruppe innerhalb dieser Disziplin.',
+  'Kontext und Disziplin sind unterschiedliche Felder und dürfen nicht vermischt werden.',
   'Keine Nummerierung, nur die Liste.'
 ].join('\n');
 
@@ -2595,7 +2767,7 @@ function gistLoadSettings() {
 function applyImportData(data, opts) {
   opts = opts || {};
   if(!data || !Array.isArray(data.skills)) { toast('Ungültige Daten.'); return; }
-  S.skills = data.skills || [];
+  S.skills = (data.skills || []).map(normalizeSkillShape).filter(function(s){ return s && s.name; });
   S.modes  = data.modes  || [];
   if(data._lastExported || data.exported) S._lastExported = data._lastExported || data.exported;
   if(data.prefs) S.prefs = data.prefs;
@@ -2626,15 +2798,25 @@ function applyImportData(data, opts) {
 /* ─── SKILL FACH NEUZUORDNUNG ─── */
 function skillChangeFach(id, newFach){
   if(newFach === '__new__'){
-    var name = prompt('Neues Fach eingeben:');
+    var name = prompt('Neue Disziplin eingeben:');
     if(!name || !name.trim()) { renderTable(); return; }
     newFach = name.trim();
   }
   var sk = S.skills.find(function(s){ return s.id == id; });
-  if(!sk || sk.fach === newFach) return;
+  if(!sk || skillDisziplin(sk) === newFach) return;
+  var oldDisziplin = skillDisziplin(sk);
+  var fam = (sk.skillFamilie || '').trim();
   sk.fach = newFach;
+  sk.disziplin = newFach;
+  if(fam && fam.indexOf('::') >= 0){
+    var parts = fam.split('::');
+    var famPrefix = (parts[0] || '').trim();
+    if(famPrefix === oldDisziplin){
+      sk.skillFamilie = newFach + '::' + parts.slice(1).join('::');
+    }
+  }
   save(); updateFilters();
-  toast('✓ Fach geändert → ' + newFach);
+  toast('✓ Disziplin geändert → ' + newFach);
 }
 
 /* ─── MITSCHRIEB-TRACKER RENDER ─── */
