@@ -193,6 +193,10 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 
 /* FILTER PILLS */
 .filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.sort-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-2px 0 10px;}
+.sort-row .sort-select{width:auto;min-width:160px;max-width:220px;}
+.sort-row .sort-dir-btn{min-height:var(--touch-min);padding:8px 12px;white-space:nowrap;}
+.skill-meta-line{font-family:var(--body);font-size:12px;color:var(--ink-dim);line-height:1.4;margin-top:4px;}
 .fp{font-family:var(--body);font-weight:600;font-size:var(--fs-filter);
   padding:7px 14px;border:1px solid var(--border);border-radius:20px;
   background:var(--surface);color:var(--ink-light);cursor:pointer;
@@ -274,6 +278,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
   .stat-bar{grid-template-columns:1fr 1fr;}
   .grid-2,.farmer-row,.platform-row{grid-template-columns:1fr;flex-direction:column;}
   .mode-grid{grid-template-columns:repeat(2,1fr);}
+  .sort-row .sort-select{width:100%;max-width:none;}
 }
 
 /* EMPTY STATE */
@@ -516,6 +521,18 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 
     <div id="panel-sl" class="panel">
       <div class="filter-row" id="sfb"><button class="fp active" onclick="fSkills('alle',this)">Alle</button></div>
+      <div class="sort-row">
+        <select id="skill-sort-field" class="sort-select" onchange="setSkillSortField(this.value)">
+          <option value="datum">Datum</option>
+          <option value="disziplin">Disziplin</option>
+          <option value="skillFamilie">Skill-Familie</option>
+          <option value="kontext">Kontext</option>
+          <option value="name">Name</option>
+          <option value="level">Level</option>
+          <option value="xp">XP</option>
+        </select>
+        <button id="skill-sort-dir-btn" class="btn btn-s btn-sm sort-dir-btn" onclick="toggleSkillSortDir()">↓ Absteigend</button>
+      </div>
       <div style="overflow-x:auto;">
         <table class="skill-table">
           <thead><tr><th>Skill</th><th>Disziplin</th><th>Level</th><th>XP</th><th>Datum</th></tr></thead>
@@ -950,6 +967,7 @@ var _lastSyncReason = 'Noch kein Lauf';
 var _pendingConflicts = null;
 
 var sFilter='alle', tFilter='alle';
+var skillSortField='datum', skillSortDir='desc';
 var selSkills=new Set();
 var selMode='quiz';
 var selPlat_='claude';
@@ -990,7 +1008,7 @@ function load(){
   var pb=document.getElementById('pref-beruf');
   var pk=document.getElementById('pref-kurs');
   if(pb) { pb.value=S.prefs.beruf||''; pk.value=S.prefs.kurs||''; }
-  updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters();
+  updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters(); syncSkillSortControls();
 }
 
 /* ─── UTILS ─── */
@@ -1002,6 +1020,43 @@ function esc(s) {
 }
 function skillDisziplin(skill){
   return (skill && (skill.disziplin || skill.fach)) ? (skill.disziplin || skill.fach) : 'Allgemein';
+}
+function parseDeDateToSortable(dateStr){
+  var v = String(dateStr||'').trim();
+  var m = v.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if(!m) return null;
+  return Number(m[3] + m[2].padStart(2,'0') + m[1].padStart(2,'0'));
+}
+function getSkillSortValue(skill, field){
+  if(field==='datum') return parseDeDateToSortable(skill && skill.datum);
+  if(field==='disziplin') return String(skillDisziplin(skill)||'').toLowerCase();
+  if(field==='skillFamilie') return String((skill && skill.skillFamilie)||'').trim().toLowerCase();
+  if(field==='kontext') return String((skill && skill.kontext)||'').trim().toLowerCase();
+  if(field==='name') return String((skill && skill.name)||'').trim().toLowerCase();
+  if(field==='level') return Number((skill && skill.level)||0);
+  if(field==='xp') return Number((skill && skill.xp)||0);
+  return '';
+}
+function sortSkillsList(list){
+  return list.slice().sort(function(a,b){
+    var av = getSkillSortValue(a, skillSortField);
+    var bv = getSkillSortValue(b, skillSortField);
+    var aEmpty = av===null || av===undefined || av==='';
+    var bEmpty = bv===null || bv===undefined || bv==='';
+    if(aEmpty && !bEmpty) return 1;
+    if(!aEmpty && bEmpty) return -1;
+    if(aEmpty && bEmpty) return 0;
+    var cmp = 0;
+    if(typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+    else cmp = String(av).localeCompare(String(bv), 'de', { sensitivity:'base' });
+    return skillSortDir==='desc' ? -cmp : cmp;
+  });
+}
+function syncSkillSortControls(){
+  var field = document.getElementById('skill-sort-field');
+  var btn = document.getElementById('skill-sort-dir-btn');
+  if(field) field.value = skillSortField;
+  if(btn) btn.textContent = skillSortDir==='desc' ? '↓ Absteigend' : '↑ Aufsteigend';
 }
 function parseSkillFamilieField(raw){
   var v = (raw||'').trim();
@@ -1354,6 +1409,16 @@ function fSkills(f,btn){
   if(btn) btn.classList.add('active');
   renderTable();
 }
+function setSkillSortField(v){
+  skillSortField = v || 'datum';
+  syncSkillSortControls();
+  renderTable();
+}
+function toggleSkillSortDir(){
+  skillSortDir = skillSortDir==='desc' ? 'asc' : 'desc';
+  syncSkillSortControls();
+  renderTable();
+}
 function fTrain(f,btn){
   tFilter=f;
   document.querySelectorAll('#tfb .fp').forEach(b=>b.classList.remove('active'));
@@ -1365,17 +1430,23 @@ function fTrain(f,btn){
 function renderTable(){
   const tbody=document.getElementById('stbody');
   const empty=document.getElementById('stempty');
-  const fl=sFilter==='alle'?S.skills:S.skills.filter(s=>skillDisziplin(s)===sFilter);
+  const filtered=sFilter==='alle'?S.skills:S.skills.filter(s=>skillDisziplin(s)===sFilter);
+  const fl=sortSkillsList(filtered);
+  syncSkillSortControls();
   if(!fl.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   const allFaecher=[...new Set(S.skills.map(skillDisziplin))].sort();
   tbody.innerHTML=fl.map(s=>{
     const disziplin = skillDisziplin(s);
     const c=fCol(disziplin); const lvl=Math.min(s.level||0,4); const xpPct=Math.min(100,(s.xp||0)*20);
+    const kontext = (s.kontext||'').trim() || '—';
+    const skillFamilie = (s.skillFamilie||'').trim() || '—';
     const fachOpts = allFaecher.map(f=>`<option value="${esc(f)}" ${f===disziplin?'selected':''}>${esc(f)}</option>`).join('');
     return `<tr>
       <td><strong style="font-family:var(--display);font-size:19px;">${s.name}</strong>
-        <div style="font-family:var(--display);font-size:15px;color:var(--ink-light);">${s.beschreibung||''}</div></td>
+        <div style="font-family:var(--display);font-size:15px;color:var(--ink-light);">${s.beschreibung||''}</div>
+        <div class="skill-meta-line">Kontext: ${esc(kontext)}</div>
+        <div class="skill-meta-line">Skill-Familie: ${esc(skillFamilie)}</div></td>
       <td>
         <span class="fach-badge" style="background:${c.bg};color:${c.fg};border-color:${c.bd};">${disziplin}</span>
         <div style="margin-top:6px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
