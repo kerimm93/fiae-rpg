@@ -212,6 +212,9 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
   border-bottom:1px solid var(--border);}
 .skill-table td{padding:10px 12px;border-bottom:1px solid rgba(42,74,127,0.3);vertical-align:middle;}
 .skill-table tr:hover td{background:rgba(155,89,182,0.06);}
+.skill-col-main{min-width:260px;}
+.skill-col-kontext,.skill-col-familie{min-width:140px;white-space:nowrap;}
+.skill-col-disziplin{min-width:180px;}
 
 /* BADGES */
 .fach-badge{display:inline-block;padding:3px 10px;font-family:var(--body);
@@ -535,7 +538,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
       </div>
       <div style="overflow-x:auto;">
         <table class="skill-table">
-          <thead><tr><th>Skill</th><th>Disziplin</th><th>Level</th><th>XP</th><th>Datum</th></tr></thead>
+          <thead><tr><th>Skill</th><th>Kontext</th><th>Disziplin</th><th>Skill-Familie</th><th>Level</th><th>XP</th><th>Datum</th></tr></thead>
           <tbody id="stbody"></tbody>
         </table>
       </div>
@@ -1443,11 +1446,11 @@ function renderTable(){
     const skillFamilie = (s.skillFamilie||'').trim() || '—';
     const fachOpts = allFaecher.map(f=>`<option value="${esc(f)}" ${f===disziplin?'selected':''}>${esc(f)}</option>`).join('');
     return `<tr>
-      <td><strong style="font-family:var(--display);font-size:19px;">${s.name}</strong>
+      <td class="skill-col-main"><strong style="font-family:var(--display);font-size:19px;">${s.name}</strong>
         <div style="font-family:var(--display);font-size:15px;color:var(--ink-light);">${s.beschreibung||''}</div>
-        <div class="skill-meta-line">Kontext: ${esc(kontext)}</div>
-        <div class="skill-meta-line">Skill-Familie: ${esc(skillFamilie)}</div></td>
-      <td>
+      </td>
+      <td class="skill-col-kontext" style="font-family:var(--display);font-size:15px;color:var(--ink-light);">${esc(kontext)}</td>
+      <td class="skill-col-disziplin">
         <span class="fach-badge" style="background:${c.bg};color:${c.fg};border-color:${c.bd};">${disziplin}</span>
         <div style="margin-top:6px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
           <select onchange="skillChangeFach(${s.id},this.value)" style="font-size:12px;padding:3px 6px;min-height:28px;background:var(--surface-2);border:1px solid var(--border);color:var(--ink);border-radius:4px;max-width:160px;">
@@ -1456,6 +1459,7 @@ function renderTable(){
           </select>
         </div>
       </td>
+      <td class="skill-col-familie" style="font-family:var(--display);font-size:15px;color:var(--ink-light);">${esc(skillFamilie)}</td>
       <td><span class="lvl-badge lv${lvl}">${LV[lvl]}</span></td>
       <td><div class="mini-xp"><div class="mini-xp-f" style="width:${xpPct}%"></div></div>
         <div style="font-family:var(--display);font-size:14px;color:var(--ink-light);">${s.sessions||0}x</div></td>
