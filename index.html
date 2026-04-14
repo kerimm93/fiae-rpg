@@ -340,6 +340,12 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 .mt-dot-done{ background:rgba(46,204,113,0.12);color:#2ecc71;border-color:rgba(46,204,113,0.3); }
 .mt-dot-todo{ color:var(--ink-dim); }
 .mt-dot-label{ font-size:11px; }
+.mt-mini-meta{ display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
+.mt-mini-chip{
+  display:inline-flex;align-items:center;gap:4px;
+  font-family:var(--display);font-size:11px;color:var(--ink-light);
+  border:1px solid var(--border);border-radius:999px;padding:2px 8px;
+}
 </style>
 </head>
 
@@ -680,6 +686,37 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
         </div>
         <div id="mt-detail-dungeons" style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap;"></div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px;" id="mt-toggle-grid"></div>
+        <div class="qs" style="margin-bottom:12px;">
+          <div class="qh"><span class="qi">🖼️</span> SCREENSHOTS &amp; CHAT</div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
+            <div>
+              <label style="margin-bottom:4px;">Explorer-Filter</label>
+              <input type="text" id="mt-screenshot-filter" readonly>
+            </div>
+            <button class="btn btn-sm btn-m" onclick="mtCopyExplorerFilter()">Filter kopieren</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
+            <div>
+              <label style="margin-bottom:4px;">Ordnername</label>
+              <input type="text" id="mt-screenshot-folder" readonly>
+            </div>
+            <button class="btn btn-sm btn-m" onclick="mtCopyFolderName()">Ordnername kopieren</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
+            <div>
+              <label style="margin-bottom:4px;">GPT-Chat-Link</label>
+              <input type="text" id="mt-chat-url" placeholder="https://chat.openai.com/..." oninput="mtSaveChatUrl()">
+            </div>
+            <button class="btn btn-sm btn-q" onclick="mtOpenChatUrl()">Link öffnen</button>
+          </div>
+          <label style="margin-bottom:4px;">Screenshot-Dateipfade (eine Zeile pro Datei)</label>
+          <textarea id="mt-screenshot-paths" rows="5" placeholder="C:\Users\UserS2025\Pictures\Screenshots\Screenshot 2026-04-14 093843.png" oninput="mtSaveScreenshotPaths()"></textarea>
+          <div id="mt-screenshot-meta" style="font-size:12px;color:var(--ink-light);margin-top:6px;">Screenshots: 0 · GPT-Batches: 0</div>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;">
+            <input type="checkbox" id="mt-screenshots-processed" style="width:auto;min-height:auto;" onchange="mtToggleScreenshotsProcessed()">
+            <span style="font-size:13px;color:var(--ink-light);font-weight:700;">Alle Screenshots verarbeitet</span>
+          </label>
+        </div>
         <label style="font-family:var(--pixel);font-size:7px;color:var(--ink-light);display:block;margin-bottom:6px;">TAGEBUCH</label>
         <textarea id="mt-diary" rows="4" placeholder="Was habe ich heute gemacht, gelernt, bemerkt?" oninput="mtSaveDiary()"></textarea>
         <div style="margin-top:10px;">
@@ -946,6 +983,9 @@ function load(){
   if(!S.prefs)       S.prefs  = {beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:''};
   if(!S.dungeons)    S.dungeons = null;
   if(!S.dayTracker)  S.dayTracker = {};
+  Object.keys(S.dayTracker).forEach(function(d){
+    S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
+  });
   var pb=document.getElementById('pref-beruf');
   var pk=document.getElementById('pref-kurs');
   if(pb) { pb.value=S.prefs.beruf||''; pk.value=S.prefs.kurs||''; }
@@ -2111,12 +2151,33 @@ function dtGetOrCreate(dateStr){
       notesDone: false,
       skillsExtracted: false,
       skillsImported: false,
+      screenshotPathsRaw: '',
+      screenshotChatUrl: '',
+      screenshotsProcessed: false,
       diary: '',
       log: [],
       updatedAt: new Date().toISOString()
     };
   }
+  S.dayTracker[dateStr] = dtEnsureEntryDefaults(S.dayTracker[dateStr], dateStr);
   return S.dayTracker[dateStr];
+}
+
+function dtEnsureEntryDefaults(entry, dateStr){
+  if(!entry || typeof entry !== 'object') entry = {};
+  if(dateStr && !entry.date) entry.date = dateStr;
+  if(!Array.isArray(entry.dungeonIds)) entry.dungeonIds = [];
+  if(typeof entry.promptCopied !== 'boolean') entry.promptCopied = !!entry.promptCopied;
+  if(typeof entry.notesDone !== 'boolean') entry.notesDone = !!entry.notesDone;
+  if(typeof entry.skillsExtracted !== 'boolean') entry.skillsExtracted = !!entry.skillsExtracted;
+  if(typeof entry.skillsImported !== 'boolean') entry.skillsImported = !!entry.skillsImported;
+  if(typeof entry.screenshotPathsRaw !== 'string') entry.screenshotPathsRaw = '';
+  if(typeof entry.screenshotChatUrl !== 'string') entry.screenshotChatUrl = '';
+  if(typeof entry.screenshotsProcessed !== 'boolean') entry.screenshotsProcessed = !!entry.screenshotsProcessed;
+  if(typeof entry.diary !== 'string') entry.diary = '';
+  if(!Array.isArray(entry.log)) entry.log = [];
+  if(!entry.updatedAt) entry.updatedAt = new Date().toISOString();
+  return entry;
 }
 
 function dtLog(dateStr, msg){
@@ -2260,8 +2321,9 @@ function upsertById(base, incoming, path, conflicts){
 function mergeDayTracker(local, remote, conflicts){
   var out = clone(local||{});
   Object.keys(remote||{}).forEach(function(date){
-    var l = out[date], r = remote[date];
-    if(!l) { out[date] = r; return; }
+    var hasLocal = !!out[date];
+    var l = dtEnsureEntryDefaults(out[date], date), r = dtEnsureEntryDefaults(remote[date], date);
+    if(!hasLocal) { out[date] = r; return; }
     var next = clone(l);
     ['promptCopied','notesDone','skillsExtracted','skillsImported'].forEach(function(flag){
       if(Boolean(l[flag]) !== Boolean(r[flag])){
@@ -2274,6 +2336,21 @@ function mergeDayTracker(local, remote, conflicts){
       conflicts.push({ type:'dayTracker.diary', key:date, local:l, remote:r, resolution:'local' });
     } else {
       next.diary = l.diary || r.diary || '';
+    }
+    if((l.screenshotPathsRaw||'') !== (r.screenshotPathsRaw||'')){
+      conflicts.push({ type:'dayTracker.screenshotPathsRaw', key:date, local:l, remote:r, resolution:'local' });
+    } else {
+      next.screenshotPathsRaw = l.screenshotPathsRaw || r.screenshotPathsRaw || '';
+    }
+    if((l.screenshotChatUrl||'') !== (r.screenshotChatUrl||'')){
+      conflicts.push({ type:'dayTracker.screenshotChatUrl', key:date, local:l, remote:r, resolution:'local' });
+    } else {
+      next.screenshotChatUrl = l.screenshotChatUrl || r.screenshotChatUrl || '';
+    }
+    if(Boolean(l.screenshotsProcessed) !== Boolean(r.screenshotsProcessed)){
+      conflicts.push({ type:'dayTracker.screenshotsProcessed', key:date, local:l, remote:r, resolution:'local' });
+    } else {
+      next.screenshotsProcessed = Boolean(l.screenshotsProcessed) || Boolean(r.screenshotsProcessed);
     }
     var set = new Set((l.log||[]).concat(r.log||[]));
     next.log = Array.from(set);
@@ -2524,6 +2601,9 @@ function applyImportData(data, opts) {
   if(data.prefs) S.prefs = data.prefs;
   if(data.dungeons && Array.isArray(data.dungeons) && data.dungeons.length) S.dungeons = data.dungeons;
   if(data.dayTracker && typeof data.dayTracker === 'object') S.dayTracker = data.dayTracker;
+  Object.keys(S.dayTracker || {}).forEach(function(d){
+    S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
+  });
   if(data.wpDays && Array.isArray(data.wpDays) && data.wpDays.length){
     try { localStorage.setItem('fi_wp_days', JSON.stringify(data.wpDays)); } catch(e){}
     wpDays = data.wpDays;
@@ -2608,8 +2688,9 @@ function mtRender(){
   }
 
   list.innerHTML = filtered.map(function(d){
-    var entry = (S.dayTracker && S.dayTracker[d]) || null;
+    var entry = (S.dayTracker && S.dayTracker[d]) ? dtEnsureEntryDefaults(S.dayTracker[d], d) : null;
     var status = dtGetStatus(entry);
+    var shotMeta = mtGetScreenshotMeta(entry ? entry.screenshotPathsRaw : '');
 
     // Get dungeon names for this date
     var dungeonNames = [];
@@ -2640,6 +2721,11 @@ function mtRender(){
           '<div class="mt-status-pill ' + statusClass + '">' + statusLabel + '</div>' +
           '<div style="font-family:var(--display);font-size:17px;font-weight:700;">' + d + '</div>' +
           (dungeonNames.length ? '<div style="font-size:13px;color:var(--ink-light);">' + dungeonNames.join(' · ') + '</div>' : '') +
+          '<div class="mt-mini-meta">' +
+            (shotMeta.count ? '<span class="mt-mini-chip" title="Screenshots">📸 ' + shotMeta.count + '</span>' : '') +
+            ((entry && entry.screenshotChatUrl && entry.screenshotChatUrl.trim()) ? '<span class="mt-mini-chip" title="GPT-Link hinterlegt">💬</span>' : '') +
+            ((entry && entry.screenshotsProcessed) ? '<span class="mt-mini-chip" title="Screenshots verarbeitet">Screens fertig</span>' : '') +
+          '</div>' +
         '</div>' +
         '<div class="mt-checks">' + p + '</div>' +
       '</div>' +
@@ -2673,6 +2759,7 @@ function mtShowDetail(dateStr){
   detail.scrollIntoView({behavior:'smooth', block:'nearest'});
 
   var entry = dtGetOrCreate(dateStr);
+  var shotMeta = mtGetScreenshotMeta(entry.screenshotPathsRaw);
 
   document.getElementById('mt-detail-date').textContent = dateStr;
 
@@ -2703,6 +2790,12 @@ function mtShowDetail(dateStr){
 
   // Diary
   document.getElementById('mt-diary').value = entry.diary || '';
+  document.getElementById('mt-screenshot-filter').value = mtGetExplorerFilterForDate(dateStr);
+  document.getElementById('mt-screenshot-folder').value = mtGetScreenshotFolderName(dateStr, entry);
+  document.getElementById('mt-chat-url').value = entry.screenshotChatUrl || '';
+  document.getElementById('mt-screenshot-paths').value = entry.screenshotPathsRaw || '';
+  document.getElementById('mt-screenshot-meta').textContent = 'Screenshots: ' + shotMeta.count + ' · GPT-Batches: ' + shotMeta.batches;
+  document.getElementById('mt-screenshots-processed').checked = !!entry.screenshotsProcessed;
 
   // Log
   var logEl = document.getElementById('mt-log-list');
@@ -2741,6 +2834,139 @@ function mtSaveDiary(){
 function mtCloseDetail(){
   mtOpenDate = null;
   document.getElementById('mt-detail').style.display = 'none';
+  mtRender();
+}
+
+function mtGetScreenshotLines(raw){
+  return String(raw || '').split(/\r?\n/).map(function(line){ return line.trim(); }).filter(Boolean);
+}
+
+function mtGetScreenshotMeta(raw){
+  var count = mtGetScreenshotLines(raw).length;
+  return { count: count, batches: count ? Math.ceil(count / 10) : 0 };
+}
+
+function mtGetExplorerFilterForDate(dateStr){
+  if(!dateStr || dateStr.indexOf('.') < 0) return '';
+  var p = dateStr.split('.');
+  if(p.length !== 3) return '';
+  return [p[2], p[1], p[0]].join('-');
+}
+
+function mtGetDayDungeonNames(dateStr){
+  var names = [];
+  if(!S.dungeons) return names;
+  S.dungeons.forEach(function(dungeon){
+    if((dungeon.days||[]).some(function(day){ return day.date === dateStr; })){
+      names.push((dungeon.name || '').trim());
+    }
+  });
+  return names.filter(Boolean);
+}
+
+function mtGetScreenshotFolderName(dateStr, entry){
+  var iso = mtGetExplorerFilterForDate(dateStr) || dateStr;
+  var ids = (entry && Array.isArray(entry.dungeonIds)) ? entry.dungeonIds.filter(Boolean) : [];
+  var names = [];
+  if(ids.length && S.dungeons){
+    ids.forEach(function(id){
+      var d = S.dungeons.find(function(x){ return x.id === id; });
+      if(d && d.name) names.push(d.name.trim());
+    });
+    names = names.filter(Boolean);
+  }
+  if(!names.length){
+    names = mtGetDayDungeonNames(dateStr);
+  }
+  if(names.length > 1) return iso + ' - Mehrere Fächer';
+  if(names.length === 1) return iso + ' - ' + names[0];
+  return iso + ' - Unterricht';
+}
+
+function mtCopyText(text, okMsg){
+  var t = String(text || '').trim();
+  if(!t){ toast('Nichts zum Kopieren.'); return; }
+  function fallbackCopy(){
+    var ta = document.createElement('textarea');
+    ta.value = t;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+    document.body.removeChild(ta);
+    if(ok) toast(okMsg || 'Kopiert.');
+    else toast('Kopieren fehlgeschlagen.');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t)
+      .then(function(){ toast(okMsg || 'Kopiert.'); })
+      .catch(function(){ fallbackCopy(); });
+    return;
+  }
+  fallbackCopy();
+}
+
+function mtCopyExplorerFilter(){
+  if(!mtOpenDate) return;
+  mtCopyText(mtGetExplorerFilterForDate(mtOpenDate), 'Filter kopiert.');
+}
+
+function mtCopyFolderName(){
+  if(!mtOpenDate) return;
+  var entry = dtGetOrCreate(mtOpenDate);
+  mtCopyText(mtGetScreenshotFolderName(mtOpenDate, entry), 'Ordnername kopiert.');
+}
+
+function mtSaveScreenshotPaths(){
+  if(!mtOpenDate) return;
+  var entry = dtGetOrCreate(mtOpenDate);
+  var raw = document.getElementById('mt-screenshot-paths').value || '';
+  var before = mtGetScreenshotMeta(entry.screenshotPathsRaw || '').count;
+  var meta = mtGetScreenshotMeta(raw);
+  entry.screenshotPathsRaw = raw;
+  entry.updatedAt = new Date().toISOString();
+  document.getElementById('mt-screenshot-meta').textContent = 'Screenshots: ' + meta.count + ' · GPT-Batches: ' + meta.batches;
+  if(before === 0 && meta.count > 0){
+    dtLog(mtOpenDate, 'Screenshot-Pfade hinzugefügt');
+  }
+  if(mtSaveScreenshotPaths._t) clearTimeout(mtSaveScreenshotPaths._t);
+  mtSaveScreenshotPaths._t = setTimeout(function(){
+    save();
+    mtRender();
+  }, 250);
+}
+
+function mtSaveChatUrl(){
+  if(!mtOpenDate) return;
+  var entry = dtGetOrCreate(mtOpenDate);
+  entry.screenshotChatUrl = (document.getElementById('mt-chat-url').value || '').trim();
+  entry.updatedAt = new Date().toISOString();
+  if(mtSaveChatUrl._t) clearTimeout(mtSaveChatUrl._t);
+  mtSaveChatUrl._t = setTimeout(function(){ save(); mtRender(); }, 250);
+}
+
+function mtOpenChatUrl(){
+  if(!mtOpenDate) return;
+  var entry = dtGetOrCreate(mtOpenDate);
+  var raw = String(entry.screenshotChatUrl || '').trim();
+  var md = raw.match(/^\[[^\]]+\]\(([^)]+)\)$/);
+  var url = (md && md[1] ? md[1] : raw).trim();
+  if(!url){ toast('Kein GPT-Link hinterlegt.'); return; }
+  window.open(url, '_blank', 'noopener');
+}
+
+function mtToggleScreenshotsProcessed(){
+  if(!mtOpenDate) return;
+  var entry = dtGetOrCreate(mtOpenDate);
+  entry.screenshotsProcessed = !!document.getElementById('mt-screenshots-processed').checked;
+  entry.updatedAt = new Date().toISOString();
+  dtLog(mtOpenDate, entry.screenshotsProcessed ? 'Screenshots als verarbeitet markiert' : 'Screenshots wieder offen');
+  save();
   mtRender();
 }
 
