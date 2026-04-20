@@ -436,7 +436,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 
       <div class="qs locked" id="qs3">
         <div class="qh"><span class="qi">⚖️</span> Schritt III — Abgleich-Prompt</div>
-        <div class="notice">Kopiere in einen <strong>neuen</strong> GPT-Chat. Filtert echte Neuheiten heraus. Die bisherige Skill-Liste wird automatisch eingebettet.</div>
+        <div class="notice">Am besten im selben Mitschriebe-Chat nutzen: So kann GPT Unterrichtskontext und Skill-Datenbank sauber abgleichen.</div>
         <div id="p2box" class="scroll-box" style="display:none"></div>
         <div class="btn-row">
           <button class="btn btn-m" onclick="genP2()">▶ Abgleich-Prompt</button>
@@ -1024,6 +1024,38 @@ function esc(s) {
 function skillDisziplin(skill){
   return (skill && (skill.disziplin || skill.fach)) ? (skill.disziplin || skill.fach) : 'Allgemein';
 }
+function formatSkillForPrompt(skill){
+  var s = normalizeSkillShape(skill);
+  if(!s || !s.name) return '';
+  var disziplin = skillDisziplin(s);
+  var kontext = (s.kontext||'').trim() || '—';
+  var familie = (s.skillFamilie||'').trim() || '—';
+  var beschreibung = (s.beschreibung||'').trim() || '—';
+  var datum = (s.datum||'').trim() || '—';
+  var level = Number(s.level||0);
+  var xp = Number(s.xp||0);
+  var sessions = Number(s.sessions||0);
+  return [
+    '- Skill: ' + (s.name || 'Unbenannt'),
+    '  Kontext: ' + kontext,
+    '  Disziplin: ' + disziplin,
+    '  Skill-Familie: ' + familie,
+    '  Kurzbeschreibung: ' + beschreibung,
+    '  Datum: ' + datum,
+    '  Level: ' + level,
+    '  XP: ' + xp,
+    '  Trainingssessions: ' + sessions
+  ].join('\n');
+}
+function formatKnownSkillsForPrompt(){
+  if(!S.skills || !S.skills.length) return '(noch keine Skills)';
+  return S.skills
+    .map(normalizeSkillShape)
+    .filter(function(s){ return s && s.name; })
+    .map(formatSkillForPrompt)
+    .filter(Boolean)
+    .join('\n\n') || '(noch keine Skills)';
+}
 function parseDeDateToSortable(dateStr){
   var v = String(dateStr||'').trim();
   var m = v.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
@@ -1313,16 +1345,21 @@ function toStep3(){
 }
 function genP2(){
   const raw=document.getElementById('raw-in').value.trim();
-  const ex=S.skills.map(s=>s.name).join(', ')||'(noch keine Skills)';
+  const ex=formatKnownSkillsForPrompt();
   const p=`Du bist mein Skill-Tracker.
 
-Bereits bekannte Skills in meiner Datenbank:
+Bestehende Skill-Datenbank (strukturiert):
 ${ex}
 
 Heute gelernte Skills (roh):
 ${raw}
 
-Aufgabe: Welche Skills sind WIRKLICH NEU — also noch nicht (oder nicht als Synonym) in der Datenbank?
+Aufgabe:
+- Führe den Abgleich idealerweise im selben Unterrichts-Chat durch, aus dem die Roh-Skills stammen.
+- Vergleiche die Roh-Skills mit der bestehenden Skill-Datenbank.
+- Erkenne Synonyme, Teilüberschneidungen, Ober-/Unterbegriffe und bereits abgedeckte Konzepte.
+- Gib nur Skills aus, die wirklich neu und eigenständig trainierbar sind.
+- Wenn ein Roh-Skill nur eine Präzisierung eines vorhandenen Skills ist, nicht als neuen Skill ausgeben.
 
 ${SKILL_IMPORT_DEFINITION_BLOCK}
 
@@ -1635,21 +1672,25 @@ Regeln:
 function genFarmerAbgleich(){
   const raw=document.getElementById('sf-result').value.trim();
   if(!raw){toast('Bitte geerntete Skills einfügen!');return;}
-  const ex=S.skills.map(s=>s.name).join(', ')||'(noch keine Skills)';
+  const ex=formatKnownSkillsForPrompt();
   const p=`Du bist mein Skill-Tracker.
 
-Bereits bekannte Skills in meiner Datenbank:
+Bestehende Skill-Datenbank (strukturiert):
 ${ex}
 
 Neu geerntet aus Lernmaterial:
 ${raw}
 
-Aufgabe: Welche Skills sind WIRKLICH NEU (noch nicht in der Datenbank)?
+Aufgabe:
+- Vergleiche die neu geernteten Skills mit der bestehenden Skill-Datenbank.
+- Nutze dabei Name, Kontext, Disziplin, Skill-Familie und Kurzbeschreibung.
+- Gib nur Skills aus, die wirklich neu sind.
+- Synonyme oder bereits abgedeckte Konzepte nicht erneut ausgeben.
 
 ${SKILL_IMPORT_DEFINITION_BLOCK}
 
 Regeln:
-- Nur neue Skills ausgeben (auch Synonyme berücksichtigen)
+- Nur neue Skills ausgeben
 - Keine Nummerierung, nur die Liste`;
   Ps['fa']=p;
   const b=document.getElementById('pfabox'); b.textContent=p; b.style.display='block';
