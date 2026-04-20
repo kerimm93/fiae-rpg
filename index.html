@@ -699,7 +699,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
       <div id="mt-list"></div>
 
       <!-- Detail-Drawer -->
-      <div id="mt-detail" class="qs" style="display:none;margin-top:8px;">
+      <div id="mt-detail" class="qs" style="display:none;margin-top:8px;" onclick="event.stopPropagation()">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
           <div class="qh" style="margin-bottom:0;"><span class="qi">📅</span> <span id="mt-detail-date"></span></div>
           <button class="btn btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--ink-light);min-height:32px;padding:4px 10px;" onclick="mtCloseDetail()">✕ Schließen</button>
@@ -2905,9 +2905,29 @@ function mtFilter(f, btn){
   mtRender();
 }
 
+function mtPersistOnly(){
+  persistLocalOnly();
+  updateSyncUI();
+  gistAutoSyncDebounced();
+}
+
+function mtFindDayRow(dateStr){
+  var list = document.getElementById('mt-list');
+  if(!list) return null;
+  var rows = list.querySelectorAll('.mt-day-row[data-mt-date]');
+  for(var i=0;i<rows.length;i++){
+    if(rows[i].getAttribute('data-mt-date') === dateStr) return rows[i];
+  }
+  return null;
+}
+
 function mtRender(){
   var list = document.getElementById('mt-list');
+  var detail = document.getElementById('mt-detail');
   if(!list) return;
+  if(detail && detail.parentNode === list){
+    list.insertAdjacentElement('afterend', detail);
+  }
 
   // Collect all known dates from dayTracker + dungeons
   var allDates = {};
@@ -2928,6 +2948,8 @@ function mtRender(){
   });
 
   if(!dates.length){
+    mtOpenDate = null;
+    if(detail) detail.style.display = 'none';
     list.innerHTML = '<div class="notice" style="margin-top:8px;">Noch keine Unterrichtstage importiert. Importiere Tage über ⑥ Weltenkarte.</div>';
     return;
   }
@@ -2938,8 +2960,13 @@ function mtRender(){
     if(mtCurrentFilter === 'alle') return true;
     return status === mtCurrentFilter;
   });
+  if(mtOpenDate && filtered.indexOf(mtOpenDate) === -1){
+    mtOpenDate = null;
+    if(detail) detail.style.display = 'none';
+  }
 
   if(!filtered.length){
+    if(detail) detail.style.display = 'none';
     list.innerHTML = '<div class="notice" style="margin-top:8px;">Keine Einträge für diesen Filter.</div>';
     return;
   }
@@ -2972,7 +2999,7 @@ function mtRender(){
     ].join('');
 
     var isOpen = mtOpenDate === d;
-    return '<div class="mt-day-row ' + (isOpen?'mt-day-open':'') + '" onclick="mtToggleDetail(\'' + d + '\')">' +
+    return '<div class="mt-day-row ' + (isOpen?'mt-day-open':'') + '" data-mt-date="' + d + '" onclick="mtToggleDetail(\'' + d + '\')">' +
       '<div class="mt-day-header">' +
         '<div style="display:flex;align-items:center;gap:10px;">' +
           '<div class="mt-status-pill ' + statusClass + '">' + statusLabel + '</div>' +
@@ -2988,6 +3015,12 @@ function mtRender(){
       '</div>' +
     '</div>';
   }).join('');
+
+  if(mtOpenDate){
+    mtShowDetail(mtOpenDate);
+  } else if(detail){
+    detail.style.display = 'none';
+  }
 }
 
 function mtStatusDot(done, label){
@@ -3006,14 +3039,18 @@ function mtToggleDetail(dateStr){
   }
   mtOpenDate = dateStr;
   mtRender();
-  mtShowDetail(dateStr);
 }
 
 function mtShowDetail(dateStr){
   var detail = document.getElementById('mt-detail');
   if(!detail) return;
+  var row = mtFindDayRow(dateStr);
+  if(!row){
+    detail.style.display = 'none';
+    return;
+  }
+  row.insertAdjacentElement('afterend', detail);
   detail.style.display = 'block';
-  detail.scrollIntoView({behavior:'smooth', block:'nearest'});
 
   var entry = dtGetOrCreate(dateStr);
   var shotMeta = mtGetScreenshotMeta(entry.screenshotPathsRaw);
@@ -3067,7 +3104,6 @@ function mtToggleFlag(dateStr, key){
   dtLog(dateStr, (entry[key] ? '✓ ' : '✗ ') + key.replace(/([A-Z])/g,' $1').toLowerCase());
   entry.updatedAt = new Date().toISOString();
   save();
-  mtShowDetail(dateStr);
   mtRender();
 }
 
@@ -3079,7 +3115,7 @@ function mtSaveDiary(){
   if(mtSaveDiary._t) clearTimeout(mtSaveDiary._t);
   mtSaveDiary._t = setTimeout(function(){
     dtLog(mtOpenDate, 'Tagebuch aktualisiert');
-    save();
+    mtPersistOnly();
     // Refresh log display without full re-render
     var logEl = document.getElementById('mt-log-list');
     if(logEl && entry.log && entry.log.length){
@@ -3090,7 +3126,14 @@ function mtSaveDiary(){
 
 function mtCloseDetail(){
   mtOpenDate = null;
-  document.getElementById('mt-detail').style.display = 'none';
+  var detail = document.getElementById('mt-detail');
+  var list = document.getElementById('mt-list');
+  if(detail){
+    detail.style.display = 'none';
+    if(list && detail.parentNode === list){
+      list.insertAdjacentElement('afterend', detail);
+    }
+  }
   mtRender();
 }
 
@@ -3193,8 +3236,7 @@ function mtSaveScreenshotPaths(){
   }
   if(mtSaveScreenshotPaths._t) clearTimeout(mtSaveScreenshotPaths._t);
   mtSaveScreenshotPaths._t = setTimeout(function(){
-    save();
-    mtRender();
+    mtPersistOnly();
   }, 250);
 }
 
@@ -3204,7 +3246,7 @@ function mtSaveChatUrl(){
   entry.screenshotChatUrl = (document.getElementById('mt-chat-url').value || '').trim();
   entry.updatedAt = new Date().toISOString();
   if(mtSaveChatUrl._t) clearTimeout(mtSaveChatUrl._t);
-  mtSaveChatUrl._t = setTimeout(function(){ save(); mtRender(); }, 250);
+  mtSaveChatUrl._t = setTimeout(function(){ mtPersistOnly(); }, 250);
 }
 
 function mtOpenChatUrl(){
