@@ -419,7 +419,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 
       <div class="qs">
         <div class="qh"><span class="qi">📜</span> Schritt I — Tages-Prompt generieren</div>
-        <div class="notice">Kopiere den Prompt in deinen Mitschriebe-Chat. GPT listet alle Skills des Tages auf.</div>
+        <div class="notice">Kopiere den Prompt in deinen Mitschriebe-Chat. GPT erstellt reiches Rohmaterial pro Skill-Kandidat plus sauberen Importblock.</div>
         <div id="p1box" class="scroll-box" style="display:none"></div>
         <div class="btn-row">
           <button class="btn btn-q" onclick="genP1()">▶ Prompt generieren</button>
@@ -429,7 +429,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 
       <div class="qs locked" id="qs2">
         <div class="qh"><span class="qi">✍️</span> Schritt II — GPT-Ergebnis einfügen</div>
-        <div class="notice">Füge die rohe Skill-Liste aus deinem GPT-Chat hier ein.</div>
+        <div class="notice">Füge das Rohmaterial aus deinem GPT-Chat hier ein. Für den späteren Import nutze am Ende nur den Importblock.</div>
         <textarea id="raw-in" rows="5" placeholder="Hier GPT-Ergebnis einfügen..."></textarea>
         <div class="btn-row"><button class="btn btn-q" onclick="toStep3()">▶ Weiter</button></div>
       </div>
@@ -1308,6 +1308,19 @@ var SKILL_IMPORT_DEFINITION_BLOCK = [
   '- Nur das geforderte Format ausgeben'
 ].join('\n');
 
+var SKILL_IMPORT_LINE_FORMAT_HINT = [
+  'IMPORTFORMAT:',
+  'SkillName | Kontext | Disziplin::Skill-Familie | Kurzbeschreibung',
+  '',
+  'Bedeutung:',
+  '- SkillName = konkreter lernbarer Skill',
+  '- Kontext = Unterrichtsfach, Modul, Projekt oder Lernumgebung',
+  '- Disziplin = fachliche Oberkategorie',
+  '- Skill-Familie = Untergruppe innerhalb der Disziplin',
+  '- Disziplin::Skill-Familie muss in einer Spalte stehen',
+  '- Kurzbeschreibung = maximal 1 kurzer Satz'
+].join('\n');
+
 function toast(m){
   const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2600);
@@ -1402,17 +1415,44 @@ function genP1(){
   const beruf=S.prefs.beruf||'Fachinformatiker';
   const p=`Du bist mein Lernassistent für die Umschulung zum ${beruf}.
 
-Aufgabe: Analysiere alle Canvas-Dateien und den Chat-Verlauf (das Datum steht im Chat selbst).
+Aufgabe: Analysiere alle Canvas-Dateien und den Chat-Verlauf (das Unterrichtsdatum steht im Chat selbst).
 
-Liste alle Fachbegriffe, Konzepte, Techniken, Befehle und Methoden auf, die heute besprochen wurden.
+Ziel: Erzeuge detailliertes, weiterverwendbares Rohmaterial für den späteren Skill-Abgleich — auch in einem neuen Chat oder in Claude.
 
-${SKILL_IMPORT_DEFINITION_BLOCK}
+Liefere das Ergebnis exakt in dieser Struktur:
+
+1) DATUM: TT.MM.JJJJ
+- Nutze das Unterrichtsdatum aus dem Chat-Verlauf, NICHT das heutige Systemdatum.
+
+2) KONTEXT DES TAGES
+- Unterrichtsfach / Modul / Projektkontext
+- Kurze Beschreibung, worum es im Unterricht ging
+
+3) DETAILLIERTE SKILL-KANDIDATEN
+- Nenne nur konkrete, lernbare und eigenständig trainierbare Skills.
+- Keine Duplikate.
+- Für JEDEN Skill-Kandidaten exakt diese Felder:
+  - SkillName
+  - Kontext
+  - Disziplin
+  - Skill-Familie
+  - Kurzbeschreibung
+  - Unterrichtsbezug / Beleg
+  - Warum eigenständig trainierbar?
+  - Abgrenzung zu ähnlichen Skills / Ober- oder Unterbegriffen
+
+4) IMPORT-LISTE
+- Erstelle am Ende einen strengen Codeblock mit maschinenlesbaren Zeilen.
+- Jede Zeile exakt im Format:
+  SkillName | Kontext | Disziplin::Skill-Familie | Kurzbeschreibung
+- Keine Nummerierung, keine zusätzlichen Kommentare im Codeblock.
 
 Regeln:
-- Erste Zeile: DATUM: [Datum des Unterrichtstages aus dem Chat, z.B. DATUM: 18.03.2026] — nicht das heutige Datum
-- Dann: Nur konkrete, lernbare Skills
-- Keine Duplikate, keine Nummerierung
-- Nur DATUM-Zeile + Liste ausgeben`;
+- Verwende für die Import-Liste exakt dieses Format (nicht ändern):
+${SKILL_IMPORT_LINE_FORMAT_HINT}
+- Nur der Abschnitt "IMPORT-LISTE" ist maschinenlesbar.
+- Der Import-Codeblock muss sauber aus der Antwort kopierbar bleiben.
+- Schreibe alle übrigen Erklärungen außerhalb des Import-Codeblocks.`;
   Ps[1]=p;
   const b=document.getElementById('p1box'); b.textContent=p; b.style.display='block';
   document.getElementById('cp1').disabled=false;
@@ -1423,12 +1463,22 @@ function toStep3(){
   if(!v){toast('Bitte erst GPT-Ergebnis einfügen!');return;}
   // Hook: extract date from DATUM: line first, fall back to ta-datum field
   var d = extractDateFromSkillResult(v);
+  var dateRecognized = !!d;
   if(!d){
     var datumField = document.getElementById('ta-datum');
     var df = datumField && datumField.value.trim();
     if(df && /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(df)) d = df;
   }
-  if(d) dtMarkSkillsExtracted(d);
+  if(d){
+    if(dateRecognized){
+      var targetField = document.getElementById('ta-datum');
+      if(targetField){
+        targetField.value = d;
+        syncTextToPicker();
+      }
+    }
+    dtMarkSkillsExtracted(d);
+  }
   setStep(3); genP2();
 }
 function genP2(){
