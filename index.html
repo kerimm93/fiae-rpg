@@ -1209,7 +1209,19 @@ function normalizeSkillShape(skill){
   out.sessions = parseInt(out.sessions)||0;
   return out;
 }
+function isIgnorableSkillImportLine(line){
+  var v = String(line||'').trim();
+  if(!v) return true;
+  if(/^`{3,}/.test(v)) return true;
+  if(/^={3,}/.test(v)) return true;
+  if(/^[-–—]{3,}$/.test(v.replace(/\|/g,''))) return true;
+  if(/^["'>]?\s*(skillname|skill name)\s*\|/i.test(v)) return true;
+  if(/^["'>]?\s*(name|skill)\s*\|\s*(kontext|fach|disziplin)\s*\|/i.test(v)) return true;
+  if(/^\s*import[- ]?liste\s*:?\s*$/i.test(v)) return true;
+  return false;
+}
 function parseSkillLine(line, fallbackDate, fallbackKontext){
+  if(isIgnorableSkillImportLine(line)) return null;
   var p = line.split('|').map(function(x){ return x.trim(); });
   if(p.length < 2 || !p[0]) return null;
   var sk = {
@@ -1471,11 +1483,7 @@ function toStep3(){
   }
   if(d){
     if(dateRecognized){
-      var targetField = document.getElementById('ta-datum');
-      if(targetField){
-        targetField.value = d;
-        syncTextToPicker();
-      }
+      d = syncRecognizedDateToImportField(d, {force:true}) || d;
     }
     dtMarkSkillsExtracted(d);
   }
@@ -1518,7 +1526,8 @@ function saveSkills(){
   const datumFromText = extractDateFromSkillResult(raw);
   const datumField = document.getElementById('ta-datum');
   const datumFromField = datumField && datumField.value.trim() ? datumField.value.trim() : null;
-  const finalDatum = datumFromText || datumFromField || null;
+  const finalDatum = datumFromText || normalizeDeDate(datumFromField) || null;
+  if(datumFromText) syncRecognizedDateToImportField(datumFromText, {force:true});
   const added=ingestSkillLines(raw, finalDatum||today());
   const cleared = finalDatum ? wkAutoSetCleared(finalDatum) : false;
   // Sync dayTracker
@@ -1540,6 +1549,7 @@ function saveSkills(){
 function ingestSkillLines(raw, extractedDate, fallbackKontext){
   let added=0;
   raw.split('\n').map(l=>l.trim()).filter(Boolean).forEach(line=>{
+    if(isIgnorableSkillImportLine(line)) return;
     if(/^DATUM:/i.test(line)) return; // skip date line
     var parsed = parseSkillLine(line, extractedDate||today(), fallbackKontext||'');
     if(!parsed || !parsed.name) return;
@@ -1550,10 +1560,29 @@ function ingestSkillLines(raw, extractedDate, fallbackKontext){
   return added;
 }
 
+function normalizeDeDate(dateStr){
+  var m = String(dateStr||'').trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if(!m) return null;
+  return m[1].padStart(2,'0') + '.' + m[2].padStart(2,'0') + '.' + m[3];
+}
+function syncRecognizedDateToImportField(dateStr, opts){
+  var normalized = normalizeDeDate(dateStr);
+  if(!normalized) return null;
+  opts = opts || {};
+  var field = document.getElementById('ta-datum');
+  if(field){
+    var current = normalizeDeDate(field.value);
+    if(opts.force || !current || current === normalized){
+      field.value = normalized;
+      syncTextToPicker();
+    }
+  }
+  return normalized;
+}
 function extractDateFromSkillResult(raw){
   // Look for DATUM: TT.MM.JJJJ line
   var match = raw.match(/DATUM:\s*(\d{1,2}\.\d{1,2}\.\d{4})/i);
-  return match ? match[1] : null;
+  return match ? normalizeDeDate(match[1]) : null;
 }
 
 /* ─── COPY ─── */
@@ -1868,6 +1897,22 @@ function exportCSV(){
   const a=document.createElement('a'); a.href=url; a.download='skills_'+today().replace(/\./g,'-')+'.csv'; a.click();
   URL.revokeObjectURL(url); toast('💾 CSV exportiert!');
 }
+function parseCsvSemicolonLine(line){
+  var out = [], cur = '', quoted = false;
+  for(var i=0;i<String(line||'').length;i++){
+    var ch = line[i];
+    if(ch === '"'){
+      if(quoted && line[i+1] === '"'){ cur += '"'; i++; }
+      else quoted = !quoted;
+    } else if(ch === ';' && !quoted){
+      out.push(cur.trim()); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur.trim());
+  return out;
+}
 function importCSV(input){
   const file=input.files[0]; if(!file) return;
   const r=new FileReader();
@@ -1876,10 +1921,10 @@ function importCSV(input){
     const lines=text.split('\n').filter(Boolean);
     if(lines.length<2){toast('CSV scheint leer.');return;}
     const imp=[];
-    const header = lines[0].split(';').map(function(x){ return x.replace(/^"|"$/g,'').trim().toLowerCase(); });
+    const header = parseCsvSemicolonLine(lines[0]).map(function(x){ return x.trim().toLowerCase(); });
     const isNew = header.indexOf('skillname') >= 0 && header.indexOf('disziplin') >= 0;
     for(let i=1;i<lines.length;i++){
-      const p=lines[i].split(';').map(x=>x.replace(/^"|"$/g,'').trim());
+      const p=parseCsvSemicolonLine(lines[i]);
       if(isNew){
         if(p.length<6 || !p[0]) continue;
         imp.push(normalizeSkillShape({
