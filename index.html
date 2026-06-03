@@ -704,6 +704,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
           <button class="fp"        id="mt-f-offen"   onclick="mtFilter('offen',this)">Offen</button>
           <button class="fp"        id="mt-f-inarbeit" onclick="mtFilter('inarbeit',this)">In Arbeit</button>
           <button class="fp"        id="mt-f-fertig"  onclick="mtFilter('fertig',this)">Fertig</button>
+          <button class="fp"        id="mt-f-ihk"     onclick="mtFilter('ihk',this)">📑 IHK-relevant</button>
         </div>
       </div>
 
@@ -723,6 +724,8 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
         </div>
         <div id="ihk-list"></div>
       </div>
+
+      <div id="ihk-prio"></div>
 
       <div id="mt-list"></div>
 
@@ -3235,12 +3238,79 @@ function ihkToggleArchive(id){
   ihkRender();
 }
 
+function ihkTokensForDate(dateStr){
+  var tokens = [];
+  if(S.dungeons){
+    S.dungeons.forEach(function(dungeon){
+      if((dungeon.days||[]).some(function(day){ return day.date === dateStr; })){
+        tokens.push(dungeon.fach ? dungeon.fach.split('/')[0].trim() : dungeon.name);
+      }
+    });
+  }
+  return tokens;
+}
+
+function ihkReportsForDate(dateStr){
+  var tokens = ihkTokensForDate(dateStr).map(function(token){
+    return String(token||'').trim().toLowerCase();
+  }).filter(function(token){ return token.length > 0; });
+  if(!tokens.length) return [];
+  return (S.ihkReports || []).filter(function(report){
+    if(!report || report.status === 'fertig' || report.archived === true) return false;
+    var ctx = String(report.context||'').trim().toLowerCase();
+    if(ctx.length < 3) return false;
+    return tokens.some(function(token){
+      return token.indexOf(ctx) !== -1 || ctx.indexOf(token) !== -1;
+    });
+  });
+}
+
+function ihkDateHasMatch(dateStr){
+  return ihkReportsForDate(dateStr).length > 0;
+}
+
+function ihkRenderPrio(){
+  var box = document.getElementById('ihk-prio');
+  if(!box) return;
+  var allDates = {};
+  if(S.dayTracker){
+    Object.keys(S.dayTracker).forEach(function(d){ allDates[d] = true; });
+  }
+  if(S.dungeons){
+    S.dungeons.forEach(function(dungeon){
+      (dungeon.days||[]).forEach(function(day){
+        if((day.state||0) >= 1) allDates[day.date] = true;
+      });
+    });
+  }
+  var prioDates = Object.keys(allDates).filter(function(d){
+    var entry = S.dayTracker && S.dayTracker[d];
+    return ihkDateHasMatch(d) && dtGetStatus(entry) !== 'fertig';
+  }).sort(function(a,b){
+    return b.split('.').reverse().join('').localeCompare(a.split('.').reverse().join(''));
+  });
+  if(!prioDates.length){
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = '<div style="margin:8px 0 10px 0;">' +
+    '<div class="qh"><span class="qi">🎯</span> Diese Mitschriebe zuerst verarbeiten</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+      prioDates.map(function(d){
+        var encodedDate = encodeURIComponent(d);
+        return '<button class="fach-badge" style="background:transparent;border-color:var(--purple);color:var(--purple-light);cursor:pointer;" onclick="event.stopPropagation();mtToggleDetail(decodeURIComponent(\'' + encodedDate + '\'))">' + esc(d) + '</button>';
+      }).join('') +
+    '</div>' +
+  '</div>';
+}
+
 function ihkRender(){
   var list = document.getElementById('ihk-list');
   if(!list) return;
   S.ihkReports = normalizeIhkReports(S.ihkReports || []);
   if(!S.ihkReports.length){
     list.innerHTML = '<div class="notice" style="margin-top:8px;">Noch keine IHK-Berichte erfasst.</div>';
+    ihkRenderPrio();
     return;
   }
   var statusLabels = { offen:'○ Offen', inarbeit:'◑ In Arbeit', fertig:'✓ Fertig' };
@@ -3273,6 +3343,7 @@ function ihkRender(){
       (r.note ? '<div class="notice" style="margin-top:8px;margin-bottom:0;">' + esc(r.note) + '</div>' : '') +
     '</div>';
   }).join('');
+  ihkRenderPrio();
 }
 
 function mtFilter(f, btn){
@@ -3328,6 +3399,7 @@ function mtRender(){
     mtOpenDate = null;
     if(detail) detail.style.display = 'none';
     list.innerHTML = '<div class="notice" style="margin-top:8px;">Noch keine Unterrichtstage importiert. Importiere Tage über ⑥ Weltenkarte.</div>';
+    ihkRenderPrio();
     return;
   }
 
@@ -3335,6 +3407,7 @@ function mtRender(){
     var entry = S.dayTracker && S.dayTracker[d];
     var status = dtGetStatus(entry);
     if(mtCurrentFilter === 'alle') return true;
+    if(mtCurrentFilter === 'ihk') return ihkDateHasMatch(d);
     return status === mtCurrentFilter;
   });
   if(mtOpenDate && filtered.indexOf(mtOpenDate) === -1){
@@ -3345,6 +3418,7 @@ function mtRender(){
   if(!filtered.length){
     if(detail) detail.style.display = 'none';
     list.innerHTML = '<div class="notice" style="margin-top:8px;">Keine Einträge für diesen Filter.</div>';
+    ihkRenderPrio();
     return;
   }
 
@@ -3363,6 +3437,7 @@ function mtRender(){
       });
     }
 
+    var ihkRel = ihkDateHasMatch(d);
     var statusClass = status === 'fertig' ? 'mt-status-fertig' : status === 'inarbeit' ? 'mt-status-inarbeit' : 'mt-status-offen';
     var statusLabel = status === 'fertig' ? '✓ Fertig' : status === 'inarbeit' ? '◑ In Arbeit' : '○ Offen';
 
@@ -3381,7 +3456,8 @@ function mtRender(){
         '<div style="display:flex;align-items:center;gap:10px;">' +
           '<div class="mt-status-pill ' + statusClass + '">' + statusLabel + '</div>' +
           '<div style="font-family:var(--display);font-size:17px;font-weight:700;">' + d + '</div>' +
-          (dungeonNames.length ? '<div style="font-size:13px;color:var(--ink-light);">' + dungeonNames.join(' · ') + '</div>' : '') +
+          (dungeonNames.length ? '<div style="font-size:13px;color:var(--ink-light);">' + dungeonNames.map(esc).join(' · ') + '</div>' : '') +
+          (ihkRel ? '<span class="fach-badge" style="border-color:var(--purple);color:var(--purple-light);" title="Passt zu offenem IHK-Bericht">📑 IHK-relevant</span>' : '') +
           '<div class="mt-mini-meta">' +
             (shotMeta.count ? '<span class="mt-mini-chip" title="Screenshots">📸 ' + shotMeta.count + '</span>' : '') +
             ((entry && entry.screenshotChatUrl && entry.screenshotChatUrl.trim()) ? '<span class="mt-mini-chip" title="GPT-Link hinterlegt">💬</span>' : '') +
@@ -3398,6 +3474,7 @@ function mtRender(){
   } else if(detail){
     detail.style.display = 'none';
   }
+  ihkRenderPrio();
 }
 
 function mtStatusDot(done, label){
