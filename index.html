@@ -704,8 +704,28 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
           <button class="fp"        id="mt-f-offen"   onclick="mtFilter('offen',this)">Offen</button>
           <button class="fp"        id="mt-f-inarbeit" onclick="mtFilter('inarbeit',this)">In Arbeit</button>
           <button class="fp"        id="mt-f-fertig"  onclick="mtFilter('fertig',this)">Fertig</button>
+          <button class="fp"        id="mt-f-ihk"     onclick="mtFilter('ihk',this)">📑 IHK-relevant</button>
         </div>
       </div>
+
+      <div class="qs">
+        <div class="qh"><span class="qi">📑</span> Offene IHK-Berichte</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 130px 2fr auto;gap:8px;align-items:end;">
+          <input type="text" id="ihk-title" placeholder="Titel">
+          <input type="text" id="ihk-period" placeholder="Zeitraum / KW">
+          <input type="text" id="ihk-context" placeholder="Fach / Kontext">
+          <select id="ihk-status">
+            <option value="offen">Offen</option>
+            <option value="inarbeit">In Arbeit</option>
+            <option value="fertig">Fertig</option>
+          </select>
+          <input type="text" id="ihk-note" placeholder="Notiz">
+          <button class="btn btn-v btn-sm" onclick="ihkAdd()">+ Bericht</button>
+        </div>
+        <div id="ihk-list"></div>
+      </div>
+
+      <div id="ihk-prio"></div>
 
       <div id="mt-list"></div>
 
@@ -753,6 +773,14 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
         <div style="margin-top:10px;">
           <div style="font-family:var(--pixel);font-size:7px;color:var(--ink-light);margin-bottom:6px;">AKTIVITÄTSLOG</div>
           <div id="mt-log-list" style="font-family:var(--display);font-size:14px;color:var(--ink-light);line-height:1.8;"></div>
+        </div>
+        <div class="qs" style="margin-bottom:12px;">
+          <div class="qh"><span class="qi">🤝</span> CLAUDE-HANDOFF</div>
+          <div class="btn-row" style="margin-bottom:8px;">
+            <button class="btn btn-sm btn-v" onclick="mtBuildHandoffPrompt()">Claude-Handoff anfordern</button>
+            <button class="btn btn-sm btn-m" onclick="mtCopyHandoffPrompt()">Prompt kopieren</button>
+          </div>
+          <textarea id="mt-handoff-prompt" rows="10" readonly placeholder="Klicke 'Claude-Handoff anfordern', um den GPT-Prompt zu erzeugen."></textarea>
         </div>
       </div>
     </div>
@@ -967,6 +995,7 @@ var S = {
   prefs: { beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:'' },
   dungeons: null,
   dayTracker: {},
+  ihkReports: [],
   _lastExported: null
 };
 var LKEY = 'fi_rpg_v4';
@@ -1000,6 +1029,7 @@ function save(){
 renderTable();
 renderTGrid();
 if (typeof wkDraw === 'function') wkDraw();
+if (typeof ihkRender === 'function') ihkRender();
   updateSyncUI();
   gistAutoSyncDebounced();
 }
@@ -1016,6 +1046,8 @@ function load(){
   if(!S.prefs)       S.prefs  = {beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:''};
   if(!S.dungeons)    S.dungeons = null;
   if(!S.dayTracker)  S.dayTracker = {};
+  if(!S.ihkReports)  S.ihkReports = [];
+  S.ihkReports = normalizeIhkReports(S.ihkReports);
   Object.keys(S.dayTracker).forEach(function(d){
     S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
   });
@@ -1023,7 +1055,7 @@ function load(){
   var pb=document.getElementById('pref-beruf');
   var pk=document.getElementById('pref-kurs');
   if(pb) { pb.value=S.prefs.beruf||''; pk.value=S.prefs.kurs||''; }
-  updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters(); syncSkillSortControls();
+  updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters(); syncSkillSortControls(); ihkRender();
 }
 
 /* ─── UTILS ─── */
@@ -1032,6 +1064,26 @@ function todayDE() { return new Date().toLocaleDateString('de-DE'); }
 function esc(s) {
   if(!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function ihkStatusValid(status) { return ['offen','inarbeit','fertig'].indexOf(status) !== -1; }
+function normalizeIhkReports(reports){
+  var now = new Date().toISOString();
+  if(!Array.isArray(reports)) reports = [];
+  return reports.map(function(r){
+    r = (r && typeof r === 'object') ? r : {};
+    var created = r.createdAt || now;
+    return {
+      id: r.id ? String(r.id) : uid(),
+      title: r.title ? String(r.title) : '',
+      period: r.period ? String(r.period) : '',
+      context: r.context ? String(r.context) : '',
+      status: ihkStatusValid(r.status) ? r.status : 'offen',
+      note: r.note ? String(r.note) : '',
+      archived: r.archived === true,
+      createdAt: created,
+      updatedAt: r.updatedAt || created || now
+    };
+  });
 }
 function skillDisziplin(skill){
   return (skill && (skill.disziplin || skill.fach)) ? (skill.disziplin || skill.fach) : 'Allgemein';
@@ -2131,13 +2183,14 @@ function exportJSON(){
   var wpSaved = null;
   try { var _w = localStorage.getItem('fi_wp_days'); if(_w) wpSaved = JSON.parse(_w); } catch(e){}
   var data = {
-    version: 5,
+    version: 6,
     exported: new Date().toISOString(),
     skills: S.skills,
     modes: S.modes,
     prefs: S.prefs,
     dungeons: S.dungeons || [],
     dayTracker: S.dayTracker || {},
+    ihkReports: S.ihkReports || [],
     wpDays: wpSaved || [],
     _lastExported: S._lastExported
   };
@@ -2771,6 +2824,7 @@ function normData(data){
     prefs: data.prefs && typeof data.prefs === 'object' ? data.prefs : {},
     dungeons: Array.isArray(data.dungeons) ? data.dungeons : [],
     dayTracker: data.dayTracker && typeof data.dayTracker === 'object' ? data.dayTracker : {},
+    ihkReports: Array.isArray(data.ihkReports) ? data.ihkReports : [],
     wpDays: Array.isArray(data.wpDays) ? data.wpDays : []
   };
 }
@@ -2871,6 +2925,8 @@ function applyConflictChoices(data){
       out.modes = out.modes.map(function(m){ return String(m.id) === c.key ? pick : m; });
     } else if(c.type === 'dungeons'){
       out.dungeons = out.dungeons.map(function(d){ return String(d.id) === c.key ? pick : d; });
+    } else if(c.type === 'ihkReports'){
+      out.ihkReports = out.ihkReports.map(function(x){ return String(x.id) === c.key ? pick : x; });
     } else if(c.type.indexOf('dayTracker.') === 0){
       out.dayTracker[c.key] = pick;
     }
@@ -2887,13 +2943,14 @@ function gistBuildPayload() {
   var wpSaved = null;
   try { var _w = localStorage.getItem('fi_wp_days'); if(_w) wpSaved = JSON.parse(_w); } catch(e){}
   return {
-    version: 5,
+    version: 6,
     exported: new Date().toISOString(),
     skills: S.skills,
     modes: S.modes,
     prefs: S.prefs,
     dungeons: S.dungeons || [],
     dayTracker: S.dayTracker || {},
+    ihkReports: S.ihkReports || [],
     wpDays: wpSaved || [],
     _lastExported: S._lastExported
   };
@@ -2984,6 +3041,7 @@ function gistSync(mode, opts){
         skills: upsertById(local.skills, remote.skills, 'skills', conflicts),
         modes: upsertById(local.modes, remote.modes, 'modes', conflicts),
         dungeons: upsertById(local.dungeons, remote.dungeons, 'dungeons', conflicts),
+        ihkReports: upsertById(local.ihkReports, remote.ihkReports, 'ihkReports', conflicts),
         dayTracker: mergeDayTracker(local.dayTracker, remote.dayTracker, conflicts),
         prefs: Object.keys(remote.prefs||{}).length ? remote.prefs : local.prefs,
         wpDays: (remote.wpDays && remote.wpDays.length) ? remote.wpDays : local.wpDays
@@ -3074,6 +3132,8 @@ function applyImportData(data, opts) {
   if(data.prefs) S.prefs = data.prefs;
   if(data.dungeons && Array.isArray(data.dungeons) && data.dungeons.length) S.dungeons = data.dungeons;
   if(data.dayTracker && typeof data.dayTracker === 'object') S.dayTracker = data.dayTracker;
+  if(Array.isArray(data.ihkReports)) S.ihkReports = data.ihkReports; else if(!S.ihkReports) S.ihkReports = [];
+  S.ihkReports = normalizeIhkReports(S.ihkReports);
   Object.keys(S.dayTracker || {}).forEach(function(d){
     S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
   });
@@ -3089,6 +3149,7 @@ function applyImportData(data, opts) {
     persistLocalOnly();
     updateStats(); renderTable(); renderTGrid(); updateFilters(); renderModes();
     if (typeof wkDraw === 'function') wkDraw();
+    ihkRender();
   }
   if(wpDays && wpDays.length){ renderWpDays(); var wb = document.getElementById('wp-days-box'); if(wb) wb.style.display='block'; }
   var pb = document.getElementById('pref-beruf'); var pk = document.getElementById('pref-kurs');
@@ -3123,6 +3184,175 @@ function skillChangeFach(id, newFach){
 /* ─── MITSCHRIEB-TRACKER RENDER ─── */
 var mtCurrentFilter = 'alle';
 var mtOpenDate = null;
+
+function ihkAdd(){
+  if(!S.ihkReports) S.ihkReports = [];
+  var titleEl = document.getElementById('ihk-title');
+  var periodEl = document.getElementById('ihk-period');
+  var contextEl = document.getElementById('ihk-context');
+  var statusEl = document.getElementById('ihk-status');
+  var noteEl = document.getElementById('ihk-note');
+  var title = titleEl ? titleEl.value.trim() : '';
+  if(!title){ toast('⚠️ Titel erforderlich.'); return; }
+  var now = new Date().toISOString();
+  S.ihkReports.push({
+    id: uid(),
+    title: title,
+    period: periodEl ? periodEl.value.trim() : '',
+    context: contextEl ? contextEl.value.trim() : '',
+    status: ihkStatusValid(statusEl ? statusEl.value : '') ? statusEl.value : 'offen',
+    note: noteEl ? noteEl.value.trim() : '',
+    archived: false,
+    createdAt: now,
+    updatedAt: now
+  });
+  if(titleEl) titleEl.value = '';
+  if(periodEl) periodEl.value = '';
+  if(contextEl) contextEl.value = '';
+  if(statusEl) statusEl.value = 'offen';
+  if(noteEl) noteEl.value = '';
+  save();
+  ihkRender();
+  toast('✓ IHK-Bericht angelegt');
+}
+
+function ihkSetStatus(id, status){
+  if(!ihkStatusValid(status)) return;
+  (S.ihkReports || []).forEach(function(r){
+    if(String(r.id) === String(id)){
+      r.status = status;
+      r.updatedAt = new Date().toISOString();
+    }
+  });
+  save();
+  ihkRender();
+}
+
+function ihkDelete(id){
+  if(!confirm('IHK-Bericht wirklich löschen?')) return;
+  S.ihkReports = (S.ihkReports || []).filter(function(r){ return String(r.id) !== String(id); });
+  save();
+  ihkRender();
+}
+
+function ihkToggleArchive(id){
+  (S.ihkReports || []).forEach(function(r){
+    if(String(r.id) === String(id)){
+      r.archived = !r.archived;
+      r.updatedAt = new Date().toISOString();
+    }
+  });
+  save();
+  ihkRender();
+}
+
+function ihkTokensForDate(dateStr){
+  var tokens = [];
+  if(S.dungeons){
+    S.dungeons.forEach(function(dungeon){
+      if((dungeon.days||[]).some(function(day){ return day.date === dateStr; })){
+        tokens.push(dungeon.fach ? dungeon.fach.split('/')[0].trim() : dungeon.name);
+      }
+    });
+  }
+  return tokens;
+}
+
+function ihkReportsForDate(dateStr){
+  var tokens = ihkTokensForDate(dateStr).map(function(token){
+    return String(token||'').trim().toLowerCase();
+  }).filter(function(token){ return token.length > 0; });
+  if(!tokens.length) return [];
+  return (S.ihkReports || []).filter(function(report){
+    if(!report || report.status === 'fertig' || report.archived === true) return false;
+    var ctx = String(report.context||'').trim().toLowerCase();
+    if(ctx.length < 3) return false;
+    return tokens.some(function(token){
+      return token.indexOf(ctx) !== -1 || ctx.indexOf(token) !== -1;
+    });
+  });
+}
+
+function ihkDateHasMatch(dateStr){
+  return ihkReportsForDate(dateStr).length > 0;
+}
+
+function ihkRenderPrio(){
+  var box = document.getElementById('ihk-prio');
+  if(!box) return;
+  var allDates = {};
+  if(S.dayTracker){
+    Object.keys(S.dayTracker).forEach(function(d){ allDates[d] = true; });
+  }
+  if(S.dungeons){
+    S.dungeons.forEach(function(dungeon){
+      (dungeon.days||[]).forEach(function(day){
+        if((day.state||0) >= 1) allDates[day.date] = true;
+      });
+    });
+  }
+  var prioDates = Object.keys(allDates).filter(function(d){
+    var entry = S.dayTracker && S.dayTracker[d];
+    return ihkDateHasMatch(d) && dtGetStatus(entry) !== 'fertig';
+  }).sort(function(a,b){
+    return b.split('.').reverse().join('').localeCompare(a.split('.').reverse().join(''));
+  });
+  if(!prioDates.length){
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = '<div style="margin:8px 0 10px 0;">' +
+    '<div class="qh"><span class="qi">🎯</span> Diese Mitschriebe zuerst verarbeiten</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+      prioDates.map(function(d){
+        var encodedDate = encodeURIComponent(d);
+        return '<button class="fach-badge" style="background:transparent;border-color:var(--purple);color:var(--purple-light);cursor:pointer;" onclick="event.stopPropagation();mtToggleDetail(decodeURIComponent(\'' + encodedDate + '\'))">' + esc(d) + '</button>';
+      }).join('') +
+    '</div>' +
+  '</div>';
+}
+
+function ihkRender(){
+  var list = document.getElementById('ihk-list');
+  if(!list) return;
+  S.ihkReports = normalizeIhkReports(S.ihkReports || []);
+  if(!S.ihkReports.length){
+    list.innerHTML = '<div class="notice" style="margin-top:8px;">Noch keine IHK-Berichte erfasst.</div>';
+    ihkRenderPrio();
+    return;
+  }
+  var statusLabels = { offen:'○ Offen', inarbeit:'◑ In Arbeit', fertig:'✓ Fertig' };
+  var reports = S.ihkReports.slice().sort(function(a,b){
+    if(Boolean(a.archived) !== Boolean(b.archived)) return a.archived ? 1 : -1;
+    return String(b.updatedAt||'').localeCompare(String(a.updatedAt||''));
+  });
+  list.innerHTML = reports.map(function(r){
+    var reportId = encodeURIComponent(String(r.id));
+    var statusClass = r.status === 'fertig' ? 'mt-status-fertig' : r.status === 'inarbeit' ? 'mt-status-inarbeit' : 'mt-status-offen';
+    return '<div class="mt-day-row" style="margin-top:8px;' + (r.archived ? 'opacity:0.55;' : '') + '">' +
+      '<div class="mt-day-header">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<div class="mt-status-pill ' + statusClass + '">' + statusLabels[r.status] + '</div>' +
+          '<div style="font-family:var(--display);font-size:16px;font-weight:700;">' + esc(r.title) + '</div>' +
+          (r.period ? '<span class="fach-badge" style="border-color:var(--border);color:var(--ink-light);">' + esc(r.period) + '</span>' : '') +
+          (r.context ? '<span class="fach-badge" style="border-color:var(--purple);color:var(--purple-light);">' + esc(r.context) + '</span>' : '') +
+          (r.archived ? '<span class="fach-badge" style="border-color:var(--border);color:var(--ink-dim);">Archiv</span>' : '') +
+        '</div>' +
+        '<div class="btn-row" style="margin-top:0;" onclick="event.stopPropagation()">' +
+          '<select onchange="ihkSetStatus(decodeURIComponent(\'' + reportId + '\'), this.value)" style="width:auto;min-height:32px;padding:5px 9px;">' +
+            '<option value="offen"' + (r.status === 'offen' ? ' selected' : '') + '>Offen</option>' +
+            '<option value="inarbeit"' + (r.status === 'inarbeit' ? ' selected' : '') + '>In Arbeit</option>' +
+            '<option value="fertig"' + (r.status === 'fertig' ? ' selected' : '') + '>Fertig</option>' +
+          '</select>' +
+          '<button class="btn btn-sm btn-m" onclick="ihkToggleArchive(decodeURIComponent(\'' + reportId + '\'))">' + (r.archived ? 'Entarchivieren' : 'Archiv') + '</button>' +
+          '<button class="btn btn-sm btn-d" onclick="ihkDelete(decodeURIComponent(\'' + reportId + '\'))">Löschen</button>' +
+        '</div>' +
+      '</div>' +
+      (r.note ? '<div class="notice" style="margin-top:8px;margin-bottom:0;">' + esc(r.note) + '</div>' : '') +
+    '</div>';
+  }).join('');
+  ihkRenderPrio();
+}
 
 function mtFilter(f, btn){
   mtCurrentFilter = f;
@@ -3177,6 +3407,7 @@ function mtRender(){
     mtOpenDate = null;
     if(detail) detail.style.display = 'none';
     list.innerHTML = '<div class="notice" style="margin-top:8px;">Noch keine Unterrichtstage importiert. Importiere Tage über ⑥ Weltenkarte.</div>';
+    ihkRenderPrio();
     return;
   }
 
@@ -3184,6 +3415,7 @@ function mtRender(){
     var entry = S.dayTracker && S.dayTracker[d];
     var status = dtGetStatus(entry);
     if(mtCurrentFilter === 'alle') return true;
+    if(mtCurrentFilter === 'ihk') return ihkDateHasMatch(d);
     return status === mtCurrentFilter;
   });
   if(mtOpenDate && filtered.indexOf(mtOpenDate) === -1){
@@ -3194,6 +3426,7 @@ function mtRender(){
   if(!filtered.length){
     if(detail) detail.style.display = 'none';
     list.innerHTML = '<div class="notice" style="margin-top:8px;">Keine Einträge für diesen Filter.</div>';
+    ihkRenderPrio();
     return;
   }
 
@@ -3212,6 +3445,7 @@ function mtRender(){
       });
     }
 
+    var ihkRel = ihkDateHasMatch(d);
     var statusClass = status === 'fertig' ? 'mt-status-fertig' : status === 'inarbeit' ? 'mt-status-inarbeit' : 'mt-status-offen';
     var statusLabel = status === 'fertig' ? '✓ Fertig' : status === 'inarbeit' ? '◑ In Arbeit' : '○ Offen';
 
@@ -3230,7 +3464,8 @@ function mtRender(){
         '<div style="display:flex;align-items:center;gap:10px;">' +
           '<div class="mt-status-pill ' + statusClass + '">' + statusLabel + '</div>' +
           '<div style="font-family:var(--display);font-size:17px;font-weight:700;">' + d + '</div>' +
-          (dungeonNames.length ? '<div style="font-size:13px;color:var(--ink-light);">' + dungeonNames.join(' · ') + '</div>' : '') +
+          (dungeonNames.length ? '<div style="font-size:13px;color:var(--ink-light);">' + dungeonNames.map(esc).join(' · ') + '</div>' : '') +
+          (ihkRel ? '<span class="fach-badge" style="border-color:var(--purple);color:var(--purple-light);" title="Passt zu offenem IHK-Bericht">📑 IHK-relevant</span>' : '') +
           '<div class="mt-mini-meta">' +
             (shotMeta.count ? '<span class="mt-mini-chip" title="Screenshots">📸 ' + shotMeta.count + '</span>' : '') +
             ((entry && entry.screenshotChatUrl && entry.screenshotChatUrl.trim()) ? '<span class="mt-mini-chip" title="GPT-Link hinterlegt">💬</span>' : '') +
@@ -3247,6 +3482,7 @@ function mtRender(){
   } else if(detail){
     detail.style.display = 'none';
   }
+  ihkRenderPrio();
 }
 
 function mtStatusDot(done, label){
@@ -3322,6 +3558,9 @@ function mtShowDetail(dateStr){
   logEl.innerHTML = (entry.log && entry.log.length)
     ? entry.log.map(function(l){ return '<div>· ' + esc(l) + '</div>'; }).join('')
     : '<div style="color:var(--ink-dim);">Noch keine Aktivitäten.</div>';
+
+  var hf = document.getElementById('mt-handoff-prompt');
+  if(hf) hf.value = '';
 }
 
 function mtToggleFlag(dateStr, key){
@@ -3446,6 +3685,104 @@ function mtCopyFolderName(){
   if(!mtOpenDate) return;
   var entry = dtGetOrCreate(mtOpenDate);
   mtCopyText(mtGetScreenshotFolderName(mtOpenDate, entry), 'Ordnername kopiert.');
+}
+
+var HANDOFF_SCHEMA = `ZIEL: Erzeuge ein Claude-kompatibles Handoff-Dokument für die Notion-Integration zweier
+Datenbanken. Kerim gibt das Dokument an Claude weiter, der die Einträge in Notion anlegt.
+
+DATENBANK 1 — UNTERRICHTSTAGE (ein Eintrag pro Tag):
+- Datum (Titel): "TT.MM.YYYY"
+- Wochentag: Montag/Dienstag/Mittwoch/Donnerstag/Freitag
+- Kalenderwoche: Zahl
+- Monat: deutscher Monatsname (Januar … Dezember)
+- Jahr: "2025"/"2026"/"2027"
+- Fächer des Tages: kommagetrennte Fach-Kürzel
+- IHK-Ausbildungsnachweis: Plaintext ohne Markdown, falls vorhanden
+- Notiz: optional
+
+DATENBANK 2 — FACH-MITSCHRIEBE (ein Eintrag pro Fach pro Tag):
+- Titel: "[FACHKÜRZEL] – [TT.MM.]"
+- Fach: GENAU einer von: FIAE-AnwP-Entwickeln, FIAE-AnwP-GUI, ITS-Net-Lin,
+  ITT-Net-IS, BGP-Rewe, BGP-MuKb, FI-ITS-CySy, Sonstiges
+- Datum: "YYYY-MM-DD"
+- Uhrzeit: z.B. "09:35–11:05", falls erkennbar, sonst leer
+- Kernthemen: Array, max. 8, NUR aus dieser Whitelist:
+  ["Rekursion","OOP","Sortieralgorithmen","Algorithmen","Big-O","Datenstrukturen",
+   "Kompression","Verschlüsselung","Netzwerk","Linux","VLAN","VPN","Routing",
+   "Betriebssystem","Kernel","Rechnungswesen","Bilanz","Kosten","BWL","CPS","IoT",
+   "Sensorik","GUI","Python","Präsentation"]
+- Aufgaben vorhanden: true/false (Checkbox)
+- IHK-relevant: true bei Algorithmen, Datenstrukturen, Netzwerk, Betriebssystem,
+  Verschlüsselung, Rechnungswesen, OOP, Big-O, Kompression, CPS, IoT, SQL, GUI
+- Status: GENAU einer von: Neu, Nachgearbeitet, Prüfungsfertig (Default: Neu)
+- Obsidian-Link: URL der Quellnotiz, falls vorhanden
+- Page-Inhalt: vollständiger Markdown-Inhalt, ohne Frontmatter
+
+AUSGABEFORMAT, das du (GPT) erzeugen sollst:
+1) Pro Unterrichtstag ein JSON-Objekt mit den Unterrichtstage-Properties.
+2) Pro Fach-Mitschrieb ein JSON-Objekt mit den Fach-Mitschriebe-Properties,
+   plus den Page-Inhalt als Markdown separat darunter.
+Valides JSON in klar getrennten Blöcken. Fach und Status NUR aus den erlaubten Werten,
+Kernthemen NUR aus der Whitelist. Keine Prosa außerhalb der Blöcke.`;
+
+function mtBuildHandoffPrompt(){
+  if(!mtOpenDate){ toast('Kein Tag geöffnet.'); return; }
+  var faecher = [];
+  if(S.dungeons){
+    S.dungeons.forEach(function(dungeon){
+      if((dungeon.days||[]).some(function(day){ return day.date === mtOpenDate; })){
+        faecher.push({
+          name: dungeon.name || '',
+          fach: dungeon.fach ? dungeon.fach.split('/')[0].trim() : ''
+        });
+      }
+    });
+  }
+  var fachLine = faecher.length
+    ? faecher.map(function(f){ return f.name + (f.fach ? ' (' + f.fach + ')' : ''); }).join(', ')
+    : 'keine zugeordnet';
+  var reportTitles = ihkReportsForDate(mtOpenDate).map(function(r){ return r.title; }).filter(Boolean);
+  var lines = [
+    'KONTEXT FÜR DIESEN TAG:',
+    'Datum = ' + mtOpenDate,
+    'Fächer = ' + fachLine
+  ];
+  if(reportTitles.length){
+    lines.push('Relevante offene IHK-Berichte: ' + reportTitles.join(', '));
+  }
+  lines.push(
+    '',
+    HANDOFF_SCHEMA,
+    '',
+    'Hinweis: Die eigentlichen Mitschrieb-Inhalte / Screenshots liefert Kerim separat. '
+      + 'Überführe diese in das oben definierte Format.'
+  );
+  document.getElementById('mt-handoff-prompt').value = lines.join('\n');
+  toast('🤝 Claude-Handoff-Prompt erzeugt');
+}
+
+function mtCopyHandoffPrompt(){
+  var el = document.getElementById('mt-handoff-prompt');
+  var text = el ? el.value : '';
+  if(!text){ toast('Erst Prompt erzeugen.'); return; }
+  function fallbackCopy(){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('✅ Handoff-Prompt kopiert');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      toast('✅ Handoff-Prompt kopiert');
+    }).catch(function(){
+      fallbackCopy();
+    });
+    return;
+  }
+  fallbackCopy();
 }
 
 function mtSaveScreenshotPaths(){
