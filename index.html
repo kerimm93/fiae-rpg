@@ -707,6 +707,23 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
         </div>
       </div>
 
+      <div class="qs">
+        <div class="qh"><span class="qi">📑</span> Offene IHK-Berichte</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 130px 2fr auto;gap:8px;align-items:end;">
+          <input type="text" id="ihk-title" placeholder="Titel">
+          <input type="text" id="ihk-period" placeholder="Zeitraum / KW">
+          <input type="text" id="ihk-context" placeholder="Fach / Kontext">
+          <select id="ihk-status">
+            <option value="offen">Offen</option>
+            <option value="inarbeit">In Arbeit</option>
+            <option value="fertig">Fertig</option>
+          </select>
+          <input type="text" id="ihk-note" placeholder="Notiz">
+          <button class="btn btn-v btn-sm" onclick="ihkAdd()">+ Bericht</button>
+        </div>
+        <div id="ihk-list"></div>
+      </div>
+
       <div id="mt-list"></div>
 
       <!-- Detail-Drawer -->
@@ -967,6 +984,7 @@ var S = {
   prefs: { beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:'' },
   dungeons: null,
   dayTracker: {},
+  ihkReports: [],
   _lastExported: null
 };
 var LKEY = 'fi_rpg_v4';
@@ -1000,6 +1018,7 @@ function save(){
 renderTable();
 renderTGrid();
 if (typeof wkDraw === 'function') wkDraw();
+if (typeof ihkRender === 'function') ihkRender();
   updateSyncUI();
   gistAutoSyncDebounced();
 }
@@ -1016,6 +1035,8 @@ function load(){
   if(!S.prefs)       S.prefs  = {beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:''};
   if(!S.dungeons)    S.dungeons = null;
   if(!S.dayTracker)  S.dayTracker = {};
+  if(!S.ihkReports)  S.ihkReports = [];
+  S.ihkReports = normalizeIhkReports(S.ihkReports);
   Object.keys(S.dayTracker).forEach(function(d){
     S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
   });
@@ -1023,7 +1044,7 @@ function load(){
   var pb=document.getElementById('pref-beruf');
   var pk=document.getElementById('pref-kurs');
   if(pb) { pb.value=S.prefs.beruf||''; pk.value=S.prefs.kurs||''; }
-  updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters(); syncSkillSortControls();
+  updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters(); syncSkillSortControls(); ihkRender();
 }
 
 /* ─── UTILS ─── */
@@ -1032,6 +1053,26 @@ function todayDE() { return new Date().toLocaleDateString('de-DE'); }
 function esc(s) {
   if(!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function ihkStatusValid(status) { return ['offen','inarbeit','fertig'].indexOf(status) !== -1; }
+function normalizeIhkReports(reports){
+  var now = new Date().toISOString();
+  if(!Array.isArray(reports)) reports = [];
+  return reports.map(function(r){
+    r = (r && typeof r === 'object') ? r : {};
+    var created = r.createdAt || now;
+    return {
+      id: r.id ? String(r.id) : uid(),
+      title: r.title ? String(r.title) : '',
+      period: r.period ? String(r.period) : '',
+      context: r.context ? String(r.context) : '',
+      status: ihkStatusValid(r.status) ? r.status : 'offen',
+      note: r.note ? String(r.note) : '',
+      archived: r.archived === true,
+      createdAt: created,
+      updatedAt: r.updatedAt || created || now
+    };
+  });
 }
 function skillDisziplin(skill){
   return (skill && (skill.disziplin || skill.fach)) ? (skill.disziplin || skill.fach) : 'Allgemein';
@@ -2131,13 +2172,14 @@ function exportJSON(){
   var wpSaved = null;
   try { var _w = localStorage.getItem('fi_wp_days'); if(_w) wpSaved = JSON.parse(_w); } catch(e){}
   var data = {
-    version: 5,
+    version: 6,
     exported: new Date().toISOString(),
     skills: S.skills,
     modes: S.modes,
     prefs: S.prefs,
     dungeons: S.dungeons || [],
     dayTracker: S.dayTracker || {},
+    ihkReports: S.ihkReports || [],
     wpDays: wpSaved || [],
     _lastExported: S._lastExported
   };
@@ -2771,6 +2813,7 @@ function normData(data){
     prefs: data.prefs && typeof data.prefs === 'object' ? data.prefs : {},
     dungeons: Array.isArray(data.dungeons) ? data.dungeons : [],
     dayTracker: data.dayTracker && typeof data.dayTracker === 'object' ? data.dayTracker : {},
+    ihkReports: Array.isArray(data.ihkReports) ? data.ihkReports : [],
     wpDays: Array.isArray(data.wpDays) ? data.wpDays : []
   };
 }
@@ -2871,6 +2914,8 @@ function applyConflictChoices(data){
       out.modes = out.modes.map(function(m){ return String(m.id) === c.key ? pick : m; });
     } else if(c.type === 'dungeons'){
       out.dungeons = out.dungeons.map(function(d){ return String(d.id) === c.key ? pick : d; });
+    } else if(c.type === 'ihkReports'){
+      out.ihkReports = out.ihkReports.map(function(x){ return String(x.id) === c.key ? pick : x; });
     } else if(c.type.indexOf('dayTracker.') === 0){
       out.dayTracker[c.key] = pick;
     }
@@ -2887,13 +2932,14 @@ function gistBuildPayload() {
   var wpSaved = null;
   try { var _w = localStorage.getItem('fi_wp_days'); if(_w) wpSaved = JSON.parse(_w); } catch(e){}
   return {
-    version: 5,
+    version: 6,
     exported: new Date().toISOString(),
     skills: S.skills,
     modes: S.modes,
     prefs: S.prefs,
     dungeons: S.dungeons || [],
     dayTracker: S.dayTracker || {},
+    ihkReports: S.ihkReports || [],
     wpDays: wpSaved || [],
     _lastExported: S._lastExported
   };
@@ -2984,6 +3030,7 @@ function gistSync(mode, opts){
         skills: upsertById(local.skills, remote.skills, 'skills', conflicts),
         modes: upsertById(local.modes, remote.modes, 'modes', conflicts),
         dungeons: upsertById(local.dungeons, remote.dungeons, 'dungeons', conflicts),
+        ihkReports: upsertById(local.ihkReports, remote.ihkReports, 'ihkReports', conflicts),
         dayTracker: mergeDayTracker(local.dayTracker, remote.dayTracker, conflicts),
         prefs: Object.keys(remote.prefs||{}).length ? remote.prefs : local.prefs,
         wpDays: (remote.wpDays && remote.wpDays.length) ? remote.wpDays : local.wpDays
@@ -3074,6 +3121,8 @@ function applyImportData(data, opts) {
   if(data.prefs) S.prefs = data.prefs;
   if(data.dungeons && Array.isArray(data.dungeons) && data.dungeons.length) S.dungeons = data.dungeons;
   if(data.dayTracker && typeof data.dayTracker === 'object') S.dayTracker = data.dayTracker;
+  if(Array.isArray(data.ihkReports)) S.ihkReports = data.ihkReports; else if(!S.ihkReports) S.ihkReports = [];
+  S.ihkReports = normalizeIhkReports(S.ihkReports);
   Object.keys(S.dayTracker || {}).forEach(function(d){
     S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
   });
@@ -3089,6 +3138,7 @@ function applyImportData(data, opts) {
     persistLocalOnly();
     updateStats(); renderTable(); renderTGrid(); updateFilters(); renderModes();
     if (typeof wkDraw === 'function') wkDraw();
+    ihkRender();
   }
   if(wpDays && wpDays.length){ renderWpDays(); var wb = document.getElementById('wp-days-box'); if(wb) wb.style.display='block'; }
   var pb = document.getElementById('pref-beruf'); var pk = document.getElementById('pref-kurs');
@@ -3123,6 +3173,107 @@ function skillChangeFach(id, newFach){
 /* ─── MITSCHRIEB-TRACKER RENDER ─── */
 var mtCurrentFilter = 'alle';
 var mtOpenDate = null;
+
+function ihkAdd(){
+  if(!S.ihkReports) S.ihkReports = [];
+  var titleEl = document.getElementById('ihk-title');
+  var periodEl = document.getElementById('ihk-period');
+  var contextEl = document.getElementById('ihk-context');
+  var statusEl = document.getElementById('ihk-status');
+  var noteEl = document.getElementById('ihk-note');
+  var title = titleEl ? titleEl.value.trim() : '';
+  if(!title){ toast('⚠️ Titel erforderlich.'); return; }
+  var now = new Date().toISOString();
+  S.ihkReports.push({
+    id: uid(),
+    title: title,
+    period: periodEl ? periodEl.value.trim() : '',
+    context: contextEl ? contextEl.value.trim() : '',
+    status: ihkStatusValid(statusEl ? statusEl.value : '') ? statusEl.value : 'offen',
+    note: noteEl ? noteEl.value.trim() : '',
+    archived: false,
+    createdAt: now,
+    updatedAt: now
+  });
+  if(titleEl) titleEl.value = '';
+  if(periodEl) periodEl.value = '';
+  if(contextEl) contextEl.value = '';
+  if(statusEl) statusEl.value = 'offen';
+  if(noteEl) noteEl.value = '';
+  save();
+  ihkRender();
+  toast('✓ IHK-Bericht angelegt');
+}
+
+function ihkSetStatus(id, status){
+  if(!ihkStatusValid(status)) return;
+  (S.ihkReports || []).forEach(function(r){
+    if(String(r.id) === String(id)){
+      r.status = status;
+      r.updatedAt = new Date().toISOString();
+    }
+  });
+  save();
+  ihkRender();
+}
+
+function ihkDelete(id){
+  if(!confirm('IHK-Bericht wirklich löschen?')) return;
+  S.ihkReports = (S.ihkReports || []).filter(function(r){ return String(r.id) !== String(id); });
+  save();
+  ihkRender();
+}
+
+function ihkToggleArchive(id){
+  (S.ihkReports || []).forEach(function(r){
+    if(String(r.id) === String(id)){
+      r.archived = !r.archived;
+      r.updatedAt = new Date().toISOString();
+    }
+  });
+  save();
+  ihkRender();
+}
+
+function ihkRender(){
+  var list = document.getElementById('ihk-list');
+  if(!list) return;
+  S.ihkReports = normalizeIhkReports(S.ihkReports || []);
+  if(!S.ihkReports.length){
+    list.innerHTML = '<div class="notice" style="margin-top:8px;">Noch keine IHK-Berichte erfasst.</div>';
+    return;
+  }
+  var statusLabels = { offen:'○ Offen', inarbeit:'◑ In Arbeit', fertig:'✓ Fertig' };
+  var reports = S.ihkReports.slice().sort(function(a,b){
+    if(Boolean(a.archived) !== Boolean(b.archived)) return a.archived ? 1 : -1;
+    return String(b.updatedAt||'').localeCompare(String(a.updatedAt||''));
+  });
+  list.innerHTML = reports.map(function(r){
+    var reportId = encodeURIComponent(String(r.id));
+    var statusClass = r.status === 'fertig' ? 'mt-status-fertig' : r.status === 'inarbeit' ? 'mt-status-inarbeit' : 'mt-status-offen';
+    return '<div class="mt-day-row" style="margin-top:8px;' + (r.archived ? 'opacity:0.55;' : '') + '">' +
+      '<div class="mt-day-header">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<div class="mt-status-pill ' + statusClass + '">' + statusLabels[r.status] + '</div>' +
+          '<div style="font-family:var(--display);font-size:16px;font-weight:700;">' + esc(r.title) + '</div>' +
+          (r.period ? '<span class="fach-badge" style="border-color:var(--border);color:var(--ink-light);">' + esc(r.period) + '</span>' : '') +
+          (r.context ? '<span class="fach-badge" style="border-color:var(--purple);color:var(--purple-light);">' + esc(r.context) + '</span>' : '') +
+          (r.archived ? '<span class="fach-badge" style="border-color:var(--border);color:var(--ink-dim);">Archiv</span>' : '') +
+        '</div>' +
+        '<div class="btn-row" style="margin-top:0;" onclick="event.stopPropagation()">' +
+          '<select onchange="ihkSetStatus(decodeURIComponent(\'' + reportId + '\'), this.value)" style="width:auto;min-height:32px;padding:5px 9px;">' +
+            '<option value="offen"' + (r.status === 'offen' ? ' selected' : '') + '>Offen</option>' +
+            '<option value="inarbeit"' + (r.status === 'inarbeit' ? ' selected' : '') + '>In Arbeit</option>' +
+            '<option value="fertig"' + (r.status === 'fertig' ? ' selected' : '') + '>Fertig</option>' +
+          '</select>' +
+          '<button class="btn btn-sm btn-m" onclick="ihkToggleArchive(decodeURIComponent(\'' + reportId + '\'))">' + (r.archived ? 'Entarchivieren' : 'Archiv') + '</button>' +
+          '<button class="btn btn-sm btn-d" onclick="ihkDelete(decodeURIComponent(\'' + reportId + '\'))">Löschen</button>' +
+        '</div>' +
+      '</div>' +
+      (r.note ? '<div class="notice" style="margin-top:8px;margin-bottom:0;">' + esc(r.note) + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
 
 function mtFilter(f, btn){
   mtCurrentFilter = f;
