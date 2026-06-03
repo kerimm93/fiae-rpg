@@ -3687,6 +3687,44 @@ function mtCopyFolderName(){
   mtCopyText(mtGetScreenshotFolderName(mtOpenDate, entry), 'Ordnername kopiert.');
 }
 
+var HANDOFF_SCHEMA = `ZIEL: Erzeuge ein Claude-kompatibles Handoff-Dokument für die Notion-Integration zweier
+Datenbanken. Kerim gibt das Dokument an Claude weiter, der die Einträge in Notion anlegt.
+
+DATENBANK 1 — UNTERRICHTSTAGE (ein Eintrag pro Tag):
+- Datum (Titel): "TT.MM.YYYY"
+- Wochentag: Montag/Dienstag/Mittwoch/Donnerstag/Freitag
+- Kalenderwoche: Zahl
+- Monat: deutscher Monatsname (Januar … Dezember)
+- Jahr: "2025"/"2026"/"2027"
+- Fächer des Tages: kommagetrennte Fach-Kürzel
+- IHK-Ausbildungsnachweis: Plaintext ohne Markdown, falls vorhanden
+- Notiz: optional
+
+DATENBANK 2 — FACH-MITSCHRIEBE (ein Eintrag pro Fach pro Tag):
+- Titel: "[FACHKÜRZEL] – [TT.MM.]"
+- Fach: GENAU einer von: FIAE-AnwP-Entwickeln, FIAE-AnwP-GUI, ITS-Net-Lin,
+  ITT-Net-IS, BGP-Rewe, BGP-MuKb, FI-ITS-CySy, Sonstiges
+- Datum: "YYYY-MM-DD"
+- Uhrzeit: z.B. "09:35–11:05", falls erkennbar, sonst leer
+- Kernthemen: Array, max. 8, NUR aus dieser Whitelist:
+  ["Rekursion","OOP","Sortieralgorithmen","Algorithmen","Big-O","Datenstrukturen",
+   "Kompression","Verschlüsselung","Netzwerk","Linux","VLAN","VPN","Routing",
+   "Betriebssystem","Kernel","Rechnungswesen","Bilanz","Kosten","BWL","CPS","IoT",
+   "Sensorik","GUI","Python","Präsentation"]
+- Aufgaben vorhanden: true/false (Checkbox)
+- IHK-relevant: true bei Algorithmen, Datenstrukturen, Netzwerk, Betriebssystem,
+  Verschlüsselung, Rechnungswesen, OOP, Big-O, Kompression, CPS, IoT, SQL, GUI
+- Status: GENAU einer von: Neu, Nachgearbeitet, Prüfungsfertig (Default: Neu)
+- Obsidian-Link: URL der Quellnotiz, falls vorhanden
+- Page-Inhalt: vollständiger Markdown-Inhalt, ohne Frontmatter
+
+AUSGABEFORMAT, das du (GPT) erzeugen sollst:
+1) Pro Unterrichtstag ein JSON-Objekt mit den Unterrichtstage-Properties.
+2) Pro Fach-Mitschrieb ein JSON-Objekt mit den Fach-Mitschriebe-Properties,
+   plus den Page-Inhalt als Markdown separat darunter.
+Valides JSON in klar getrennten Blöcken. Fach und Status NUR aus den erlaubten Werten,
+Kernthemen NUR aus der Whitelist. Keine Prosa außerhalb der Blöcke.`;
+
 function mtBuildHandoffPrompt(){
   if(!mtOpenDate){ toast('Kein Tag geöffnet.'); return; }
   var faecher = [];
@@ -3703,20 +3741,22 @@ function mtBuildHandoffPrompt(){
   var fachLine = faecher.length
     ? faecher.map(function(f){ return f.name + (f.fach ? ' (' + f.fach + ')' : ''); }).join(', ')
     : 'keine zugeordnet';
-  var reportTitles = ihkReportsForDate(mtOpenDate).map(function(r){ return r.title || ''; }).filter(Boolean);
+  var reportTitles = ihkReportsForDate(mtOpenDate).map(function(r){ return r.title; }).filter(Boolean);
   var lines = [
-    'Erzeuge auf Deutsch ein Claude-kompatibles Handoff-Dokument. Kerim gibt es später an Claude für die Notion-Integration weiter.',
-    'Kontext: Datum = ' + mtOpenDate + ', Fächer = ' + fachLine + '.',
-    'Gewünschtes Ausgabeformat:',
-    '1) Handoff-Metadaten als JSON-Block mit datum, faecher[], quelle:"FIAE-RPG Mitschrieb-Tracker", erstelltAm.',
-    '2) Pro Fach eine Canvas-Mitschrift als Markdown-Überschrift je Fach.',
-    '3) Skills als JSON-Array mit name, kontext, disziplin, level 0-4, kurzbeschreibung.',
-    '4) Aufgaben als JSON-Array mit titel, fach, prioritaet, status.',
-    'Liefere NUR diese vier Blöcke. JSON muss valide sein. Keine zusätzliche Prosa außerhalb der Blöcke.'
+    'KONTEXT FÜR DIESEN TAG:',
+    'Datum = ' + mtOpenDate,
+    'Fächer = ' + fachLine
   ];
   if(reportTitles.length){
-    lines.splice(2, 0, 'Relevante offene IHK-Berichte: ' + reportTitles.join(', ') + '.');
+    lines.push('Relevante offene IHK-Berichte: ' + reportTitles.join(', '));
   }
+  lines.push(
+    '',
+    HANDOFF_SCHEMA,
+    '',
+    'Hinweis: Die eigentlichen Mitschrieb-Inhalte / Screenshots liefert Kerim separat. '
+      + 'Überführe diese in das oben definierte Format.'
+  );
   document.getElementById('mt-handoff-prompt').value = lines.join('\n');
   toast('🤝 Claude-Handoff-Prompt erzeugt');
 }
