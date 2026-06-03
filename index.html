@@ -774,6 +774,14 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
           <div style="font-family:var(--pixel);font-size:7px;color:var(--ink-light);margin-bottom:6px;">AKTIVITÄTSLOG</div>
           <div id="mt-log-list" style="font-family:var(--display);font-size:14px;color:var(--ink-light);line-height:1.8;"></div>
         </div>
+        <div class="qs" style="margin-bottom:12px;">
+          <div class="qh"><span class="qi">🤝</span> CLAUDE-HANDOFF</div>
+          <div class="btn-row" style="margin-bottom:8px;">
+            <button class="btn btn-sm btn-v" onclick="mtBuildHandoffPrompt()">Claude-Handoff anfordern</button>
+            <button class="btn btn-sm btn-m" onclick="mtCopyHandoffPrompt()">Prompt kopieren</button>
+          </div>
+          <textarea id="mt-handoff-prompt" rows="10" readonly placeholder="Klicke 'Claude-Handoff anfordern', um den GPT-Prompt zu erzeugen."></textarea>
+        </div>
       </div>
     </div>
 
@@ -3550,6 +3558,9 @@ function mtShowDetail(dateStr){
   logEl.innerHTML = (entry.log && entry.log.length)
     ? entry.log.map(function(l){ return '<div>· ' + esc(l) + '</div>'; }).join('')
     : '<div style="color:var(--ink-dim);">Noch keine Aktivitäten.</div>';
+
+  var hf = document.getElementById('mt-handoff-prompt');
+  if(hf) hf.value = '';
 }
 
 function mtToggleFlag(dateStr, key){
@@ -3674,6 +3685,64 @@ function mtCopyFolderName(){
   if(!mtOpenDate) return;
   var entry = dtGetOrCreate(mtOpenDate);
   mtCopyText(mtGetScreenshotFolderName(mtOpenDate, entry), 'Ordnername kopiert.');
+}
+
+function mtBuildHandoffPrompt(){
+  if(!mtOpenDate){ toast('Kein Tag geöffnet.'); return; }
+  var faecher = [];
+  if(S.dungeons){
+    S.dungeons.forEach(function(dungeon){
+      if((dungeon.days||[]).some(function(day){ return day.date === mtOpenDate; })){
+        faecher.push({
+          name: dungeon.name || '',
+          fach: dungeon.fach ? dungeon.fach.split('/')[0].trim() : ''
+        });
+      }
+    });
+  }
+  var fachLine = faecher.length
+    ? faecher.map(function(f){ return f.name + (f.fach ? ' (' + f.fach + ')' : ''); }).join(', ')
+    : 'keine zugeordnet';
+  var reportTitles = ihkReportsForDate(mtOpenDate).map(function(r){ return r.title || ''; }).filter(Boolean);
+  var lines = [
+    'Erzeuge auf Deutsch ein Claude-kompatibles Handoff-Dokument. Kerim gibt es später an Claude für die Notion-Integration weiter.',
+    'Kontext: Datum = ' + mtOpenDate + ', Fächer = ' + fachLine + '.',
+    'Gewünschtes Ausgabeformat:',
+    '1) Handoff-Metadaten als JSON-Block mit datum, faecher[], quelle:"FIAE-RPG Mitschrieb-Tracker", erstelltAm.',
+    '2) Pro Fach eine Canvas-Mitschrift als Markdown-Überschrift je Fach.',
+    '3) Skills als JSON-Array mit name, kontext, disziplin, level 0-4, kurzbeschreibung.',
+    '4) Aufgaben als JSON-Array mit titel, fach, prioritaet, status.',
+    'Liefere NUR diese vier Blöcke. JSON muss valide sein. Keine zusätzliche Prosa außerhalb der Blöcke.'
+  ];
+  if(reportTitles.length){
+    lines.splice(2, 0, 'Relevante offene IHK-Berichte: ' + reportTitles.join(', ') + '.');
+  }
+  document.getElementById('mt-handoff-prompt').value = lines.join('\n');
+  toast('🤝 Claude-Handoff-Prompt erzeugt');
+}
+
+function mtCopyHandoffPrompt(){
+  var el = document.getElementById('mt-handoff-prompt');
+  var text = el ? el.value : '';
+  if(!text){ toast('Erst Prompt erzeugen.'); return; }
+  function fallbackCopy(){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast('✅ Handoff-Prompt kopiert');
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      toast('✅ Handoff-Prompt kopiert');
+    }).catch(function(){
+      fallbackCopy();
+    });
+    return;
+  }
+  fallbackCopy();
 }
 
 function mtSaveScreenshotPaths(){
