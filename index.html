@@ -3725,37 +3725,117 @@ AUSGABEFORMAT, das du (GPT) erzeugen sollst:
 Valides JSON in klar getrennten Blöcken. Fach und Status NUR aus den erlaubten Werten,
 Kernthemen NUR aus der Whitelist. Keine Prosa außerhalb der Blöcke.`;
 
+/*
+ * Folgearchitektur (nicht in diesem Sprint umbauen): Den Stundenplan künftig genau
+ * einmal importieren und daraus Wochenkampagne, Mitschrieb-Tracker, Weltkarte und
+ * Handoff-Fachkontext ableiten.
+ * TODO Fachkatalog: echten/Notion-Fachwert getrennt von Fantasy-Alias, Icon und Farbe
+ * speichern. Neue Fächer können optional einmalig einen KI-Alias-Vorschlag erhalten;
+ * bekannte Fächer verwenden ihren gespeicherten Anzeige-Alias wieder.
+ */
+function mtLoadWpDaysForHandoff(){
+  try {
+    var raw = localStorage.getItem('fi_wp_days');
+    var stored = raw ? JSON.parse(raw) : [];
+    return Array.isArray(stored) ? stored : [];
+  } catch(e){
+    return [];
+  }
+}
+
+function mtDateFromWpDayLabel(dayLabel, fallbackDateStr){
+  var match = String(dayLabel || '').match(/(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\.?/);
+  if(!match) return '';
+  var year = match[3] || '';
+  if(!year && /^\d{2}\.\d{2}\.\d{4}$/.test(fallbackDateStr || '')){
+    year = fallbackDateStr.split('.')[2];
+  }
+  if(year && year.length === 2) year = '20' + year;
+  var normalized = match[1].padStart(2, '0') + '.' + match[2].padStart(2, '0');
+  return year ? normalized + '.' + year : normalized;
+}
+
+function mtFindScheduleDayForDate(dateStr){
+  var target = mtDateFromWpDayLabel(dateStr, dateStr);
+  var sources = [
+    (typeof wpDays !== 'undefined' && Array.isArray(wpDays)) ? wpDays : [],
+    mtLoadWpDaysForHandoff()
+  ];
+  for(var sourceIndex=0; sourceIndex<sources.length; sourceIndex++){
+    for(var i=0; i<sources[sourceIndex].length; i++){
+      var candidate = mtDateFromWpDayLabel(sources[sourceIndex][i] && sources[sourceIndex][i].day, dateStr);
+      if(candidate && candidate === target) return sources[sourceIndex][i];
+    }
+  }
+  return null;
+}
+
+function mtFormatScheduleLinesForHandoff(scheduleDay){
+  if(!scheduleDay || !Array.isArray(scheduleDay.faecher)) return [];
+  return scheduleDay.faecher.map(function(slot){
+    var time = slot && slot.time ? String(slot.time).trim() : '';
+    var desc = slot && slot.desc ? String(slot.desc).trim() : '';
+    if(!time && !desc) return '';
+    return '- ' + (time ? time + ': ' : '') + desc;
+  }).filter(Boolean);
+}
+
+function mtBuildDungeonAliasContext(dateStr){
+  var aliases = [];
+  if(!S.dungeons) return aliases;
+  S.dungeons.forEach(function(dungeon){
+    if((dungeon.days||[]).some(function(day){ return day.date === dateStr; })){
+      var name = String(dungeon.name || '').trim();
+      if(name) aliases.push('- Visueller Dungeon-/Fantasy-Alias: ' + name + ' (nicht als Fach-Mapping verwenden)');
+    }
+  });
+  return aliases;
+}
+
 function mtBuildHandoffPrompt(){
   if(!mtOpenDate){ toast('Kein Tag geöffnet.'); return; }
-  var faecher = [];
-  if(S.dungeons){
-    S.dungeons.forEach(function(dungeon){
-      if((dungeon.days||[]).some(function(day){ return day.date === mtOpenDate; })){
-        faecher.push({
-          name: dungeon.name || '',
-          fach: dungeon.fach ? dungeon.fach.split('/')[0].trim() : ''
-        });
-      }
-    });
-  }
-  var fachLine = faecher.length
-    ? faecher.map(function(f){ return f.name + (f.fach ? ' (' + f.fach + ')' : ''); }).join(', ')
-    : 'keine zugeordnet';
+  var scheduleDay = mtFindScheduleDayForDate(mtOpenDate);
+  var scheduleLines = mtFormatScheduleLinesForHandoff(scheduleDay);
+  var aliasLines = mtBuildDungeonAliasContext(mtOpenDate);
   var reportTitles = ihkReportsForDate(mtOpenDate).map(function(r){ return r.title; }).filter(Boolean);
   var lines = [
     'KONTEXT FÜR DIESEN TAG:',
     'Datum = ' + mtOpenDate,
-    'Fächer = ' + fachLine
+    '',
+    'AUTORITATIVE FACHQUELLE'
   ];
+  if(scheduleLines.length){
+    lines.push('Gespeicherte Stundenplan-Zeilen für diesen Tag (bevorzugte Source of Truth):');
+    lines = lines.concat(scheduleLines);
+  } else {
+    lines.push('Keine gespeicherten Stundenplan-Zeilen für diesen Tag gefunden. Nutze dann die ursprüngliche Initialisierung des Mitschrieb-Chats / die vom Nutzer mitgelieferten Stundenplan-Zeilen als autoritative Fachquelle. Verwende Dungeon-Aliasse nicht als Ersatzquelle.');
+  }
+  lines.push(
+    '',
+    'NICHT-AUTORITÄRER APP-KONTEXT',
+    'Die folgenden Dungeon-/Fantasy-Namen sind ausschließlich visuelle Aliasse der App und keine fachliche Wahrheit:'
+  );
+  lines = lines.concat(aliasLines.length ? aliasLines : ['- Keine visuellen Dungeon-Aliasse für diesen Tag hinterlegt.']);
+  lines.push(
+    '',
+    'FACH-MAPPING-REGELN',
+    '- Erlaubte Notion-Fachwerte: FIAE-AnwP-Entwickeln, FIAE-AnwP-GUI, ITS-Net-Lin, ITT-Net-IS, BGP-Rewe, BGP-MuKb, FI-ITS-CySy, Sonstiges.',
+    '- Leite den Notion-Fachwert ausschließlich aus den Stundenplan-Zeilen oder dem fachlichen Mitschrieb-/Chat-Kontext ab, niemals aus Dungeon-Namen oder Dungeon-Mappings.',
+    '- Bei jedem Widerspruch gilt: Stundenplan bzw. ursprüngliche Mitschrieb-Chat-Initialisierung gewinnt gegen Dungeon-/Fantasy-Kontext.',
+    '- Python, API, SQLite, Programmierung oder Entwickeln nicht automatisch als GUI klassifizieren.',
+    '- FIAE-AnwP-GUI nur verwenden, wenn Stundenplan oder Mitschrieb-Kontext tatsächlich GUI bzw. Oberflächenentwicklung nennt.',
+    '- Bei Entwicklungs-/Programmierinhalten FIAE-AnwP-Entwickeln verwenden, wenn der Stundenplan-/Mitschrieb-Kontext dies stützt.',
+    '- Ein Dungeon-Name wie „Werkstatt der Oberflächen“ darf niemals allein zur Zuordnung FIAE-AnwP-GUI führen.'
+  );
   if(reportTitles.length){
-    lines.push('Relevante offene IHK-Berichte: ' + reportTitles.join(', '));
+    lines.push('', 'Relevante offene IHK-Berichte: ' + reportTitles.join(', '));
   }
   lines.push(
     '',
     HANDOFF_SCHEMA,
     '',
     'Hinweis: Die eigentlichen Mitschrieb-Inhalte / Screenshots liefert Kerim separat. '
-      + 'Überführe diese in das oben definierte Format.'
+      + 'Überführe diese in das oben definierte Format und beachte dabei zwingend die autoritative Fachquelle und die Fach-Mapping-Regeln.'
   );
   document.getElementById('mt-handoff-prompt').value = lines.join('\n');
   toast('🤝 Claude-Handoff-Prompt erzeugt');
