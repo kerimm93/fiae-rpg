@@ -363,16 +363,32 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
   font-family:var(--body);font-size:13px;color:var(--ink-light);line-height:1.35;
 }
 .mt-pipeline-option input{ width:auto;min-height:auto;margin-top:2px;flex-shrink:0; }
+
+/* APP STORAGE LOAD GUARD */
+#app-loading-overlay{
+  position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(8,10,22,0.88);backdrop-filter:blur(3px);
+}
+#app-loading-overlay .notice{
+  margin:0;max-width:420px;text-align:center;font-family:var(--display);font-size:16px;
+  color:var(--ink);border-color:var(--purple);box-shadow:0 8px 32px rgba(0,0,0,0.45);
+}
+body:not(.app-loading) #app-loading-overlay{display:none;}
+body.app-loading button,body.app-loading input,body.app-loading textarea,body.app-loading select{pointer-events:none;}
 </style>
 </head>
 
-<body>
+<body class="app-loading" aria-busy="true">
+
+<div id="app-loading-overlay" role="status" aria-live="polite">
+  <div class="notice">⏳ App-Daten werden geladen …</div>
+</div>
 
 <!-- SIDEBAR OVERLAY -->
 <div id="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- SIDEBAR -->
-<div id="sidebar">
+<div id="sidebar" inert>
   <div class="sidebar-header">
     <span class="title">SKILL TRACKER</span>
     <button class="sidebar-close" onclick="closeSidebar()">✕</button>
@@ -380,7 +396,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
   <nav class="sidebar-nav" id="sidebar-nav-items"></nav>
 </div>
 
-<div id="app">
+<div id="app" inert>
 
   <header>
     <button class="hamburger" onclick="openSidebar()" aria-label="Menu">
@@ -1017,6 +1033,15 @@ var S = {
   _lastExported: null
 };
 var LKEY = 'fi_rpg_v4';
+var DB_NAME = 'fi_rpg_db';
+var DB_VERSION = 1;
+var DB_STORE = 'appState';
+var DB_STATE_KEY = 'state';
+var STORAGE_FALLBACK_KEY = 'fi_rpg_storage_fallback';
+var _dbPromise = null;
+var _dbWriteQueue = Promise.resolve();
+var _storageWarningShown = false;
+var _appReady = false;
 var GIST_TOKEN_KEY = 'fi_gist_token';
 var GIST_ID_KEY    = 'fi_gist_id';
 var GIST_AUTO_KEY  = 'fi_gist_auto';
@@ -1037,43 +1062,195 @@ var Ps={1:'',2:'',3:'',f:'',fa:''};
 var editModeId=null;
 
 /* ─── PERSISTENCE ─── */
-function persistLocalOnly(){
-  try { localStorage.setItem(LKEY, JSON.stringify(S)); } catch(e){}
+function openDB(){
+  if(_dbPromise) return _dbPromise;
+  _dbPromise = new Promise(function(resolve, reject){
+    if(!window.indexedDB){ reject(new Error('IndexedDB ist nicht verfügbar')); return; }
+    var request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = function(){
+      var db = request.result;
+      if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+    };
+    request.onsuccess = function(){ resolve(request.result); };
+    request.onerror = function(){ reject(request.error || new Error('IndexedDB konnte nicht geöffnet werden')); };
+  }).catch(function(error){
+    _dbPromise = null;
+    throw error;
+  });
+  return _dbPromise;
 }
 
-function save(){
-  persistLocalOnly();
-  updateStats();
-renderTable();
-renderTGrid();
-if (typeof wkDraw === 'function') wkDraw();
-if (typeof ihkRender === 'function') ihkRender();
-  updateSyncUI();
-  gistAutoSyncDebounced();
+function idbGet(key){
+  return openDB().then(function(db){
+    return new Promise(function(resolve, reject){
+      var request = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(key);
+      request.onsuccess = function(){ resolve(request.result); };
+      request.onerror = function(){ reject(request.error || new Error('IndexedDB-Lesen fehlgeschlagen')); };
+    });
+  });
 }
 
-function load(){
-  // Try new key first, fall back to old keys for migration
-  var raw = localStorage.getItem(LKEY);
-  if(!raw) raw = localStorage.getItem('fi_rpg3');
-  if(!raw) raw = localStorage.getItem('fi_rpg2');
-  try { if(raw) S = JSON.parse(raw); } catch(e){}
-  // Ensure all fields have defaults
-  if(!S.skills)      S.skills = [];
-  if(!S.modes)       S.modes  = [];
-  if(!S.prefs)       S.prefs  = {beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:''};
-  if(!S.dungeons)    S.dungeons = null;
-  if(!S.dayTracker)  S.dayTracker = {};
-  if(!S.ihkReports)  S.ihkReports = [];
+function idbSet(key, value){
+  return openDB().then(function(db){
+    return new Promise(function(resolve, reject){
+      var tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).put(value, key);
+      tx.oncomplete = function(){ resolve(); };
+      tx.onerror = function(){ reject(tx.error || new Error('IndexedDB-Schreiben fehlgeschlagen')); };
+      tx.onabort = function(){ reject(tx.error || new Error('IndexedDB-Schreiben abgebrochen')); };
+    });
+  });
+}
+
+function idbDelete(key){
+  return openDB().then(function(db){
+    return new Promise(function(resolve, reject){
+      var tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).delete(key);
+      tx.oncomplete = function(){ resolve(); };
+      tx.onerror = function(){ reject(tx.error || new Error('IndexedDB-Löschen fehlgeschlagen')); };
+      tx.onabort = function(){ reject(tx.error || new Error('IndexedDB-Löschen abgebrochen')); };
+    });
+  });
+}
+
+function warnStorage(error, context){
+  console.error('[Storage/' + context + ']', error);
+  if(!_storageWarningShown){
+    _storageWarningShown = true;
+    if(typeof toast === 'function') toast('⚠️ Lokaler Speicherfehler – Notfall-Fallback aktiv.');
+  }
+}
+
+function readLegacyState(){
+  var keys = [LKEY, 'fi_rpg3', 'fi_rpg2'];
+  for(var i=0; i<keys.length; i++){
+    var raw = null;
+    try { raw = localStorage.getItem(keys[i]); } catch(e) { warnStorage(e, 'Legacy-Lesen'); }
+    if(!raw) continue;
+    try { return { key:keys[i], state:JSON.parse(raw) }; }
+    catch(e) { console.warn('[Storage/Migration] Ungültiges JSON in ' + keys[i], e); }
+  }
+  return null;
+}
+
+function clearLegacyState(){
+  try {
+    localStorage.removeItem(LKEY);
+    localStorage.removeItem('fi_rpg3');
+    localStorage.removeItem('fi_rpg2');
+    localStorage.removeItem(STORAGE_FALLBACK_KEY);
+  } catch(e) { console.warn('[Storage/Migration] Legacy-State konnte nicht entfernt werden', e); }
+}
+
+function normalizeState(){
+  if(!S || typeof S !== 'object') S = {};
+  if(!Array.isArray(S.skills)) S.skills = [];
+  if(!Array.isArray(S.modes)) S.modes = [];
+  if(!S.prefs || typeof S.prefs !== 'object') S.prefs = {beruf:'Fachinformatiker – Anwendungsentwicklung', kurs:''};
+  if(!S.dungeons) S.dungeons = null;
+  if(!S.dayTracker || typeof S.dayTracker !== 'object') S.dayTracker = {};
+  if(!Array.isArray(S.ihkReports)) S.ihkReports = [];
   S.ihkReports = normalizeIhkReports(S.ihkReports);
   Object.keys(S.dayTracker).forEach(function(d){
     S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
   });
   S.skills = S.skills.map(normalizeSkillShape).filter(function(s){ return s && s.name; });
+  if(typeof S._lastExported === 'undefined') S._lastExported = null;
+  return S;
+}
+
+function appCanMutate(){
+  return _appReady === true;
+}
+
+function guardAppReady(action){
+  if(appCanMutate()) return true;
+  console.warn('[App/Loading] Aktion vor abgeschlossenem Storage-Load blockiert' + (action ? ': ' + action : ''));
+  if(typeof toast === 'function') toast('⏳ App-Daten werden noch geladen …');
+  return false;
+}
+
+function setAppReady(ready){
+  _appReady = ready === true;
+  if(typeof document === 'undefined' || !document.body) return;
+  document.body.classList.toggle('app-loading', !_appReady);
+  document.body.setAttribute('aria-busy', _appReady ? 'false' : 'true');
+  ['app', 'sidebar'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    if(_appReady) el.removeAttribute('inert');
+    else el.setAttribute('inert', '');
+  });
+}
+
+function persistLocalOnly(){
+  if(!guardAppReady('Speichern')) return Promise.resolve(false);
+  var snapshot;
+  try { snapshot = JSON.parse(JSON.stringify(S)); }
+  catch(e) { warnStorage(e, 'Serialisieren'); return Promise.resolve(false); }
+  var write = _dbWriteQueue.then(function(){
+    return idbSet(DB_STATE_KEY, snapshot).then(function(){
+      try {
+        localStorage.removeItem(LKEY);
+        localStorage.removeItem(STORAGE_FALLBACK_KEY);
+      } catch(e) { console.warn('[Storage/Cleanup]', e); }
+    });
+  });
+  _dbWriteQueue = write.catch(function(error){
+    try {
+      localStorage.setItem(LKEY, JSON.stringify(snapshot));
+      localStorage.setItem(STORAGE_FALLBACK_KEY, '1');
+    } catch(fallbackError) {
+      console.error('[Storage/Fallback]', fallbackError);
+    }
+    warnStorage(error, 'IndexedDB-Schreiben');
+  });
+  return write.catch(function(){ return false; });
+}
+
+function save(){
+  if(!guardAppReady('Speichern')) return Promise.resolve(false);
+  var persisted = persistLocalOnly();
+  updateStats();
+  renderTable();
+  renderTGrid();
+  if (typeof wkDraw === 'function') wkDraw();
+  if (typeof ihkRender === 'function') ihkRender();
+  updateSyncUI();
+  gistAutoSyncDebounced();
+  return persisted;
+}
+
+async function load(){
+  var loaded = null;
+  var legacy = readLegacyState();
+  var fallbackPending = false;
+  try { fallbackPending = localStorage.getItem(STORAGE_FALLBACK_KEY) === '1'; } catch(e){}
+  try {
+    var stored = await idbGet(DB_STATE_KEY);
+    if(fallbackPending && legacy){
+      loaded = legacy.state;
+      await idbSet(DB_STATE_KEY, loaded);
+      clearLegacyState();
+    } else if(stored){
+      loaded = stored;
+    } else if(legacy){
+      loaded = legacy.state;
+      await idbSet(DB_STATE_KEY, loaded);
+      clearLegacyState();
+    }
+  } catch(e){
+    warnStorage(e, 'Laden/Migration');
+    if(legacy) loaded = legacy.state;
+  }
+  if(loaded) S = loaded;
+  normalizeState();
   var pb=document.getElementById('pref-beruf');
   var pk=document.getElementById('pref-kurs');
   if(pb) { pb.value=S.prefs.beruf||''; pk.value=S.prefs.kurs||''; }
   updateStats(); renderTable(); renderTGrid(); renderModes(); updateFilters(); syncSkillSortControls(); ihkRender();
+  return S;
 }
 
 /* ─── UTILS ─── */
@@ -2037,11 +2214,12 @@ function savePrefs(){
   S.prefs.kurs=document.getElementById('pref-kurs').value;
   save(); toast('✓ Gespeichert!');
 }
-function resetData(){
+async function resetData(){
+  if(!guardAppReady('Daten zurücksetzen')) return;
   if(!confirm('Wirklich alle Daten und custom Modi löschen?')) return;
   S.skills=[]; S.modes=[]; S.dayTracker={};
   wkInit();
-save(); updateFilters(); renderModes();
+await save(); updateFilters(); renderModes();
   toast('☠️ Alles gelöscht.');
 }
 
@@ -2197,7 +2375,8 @@ function copyDayPrompt(idx) {
 }
 
 
-function exportJSON(){
+async function exportJSON(){
+  await persistLocalOnly();
   var wpSaved = null;
   try { var _w = localStorage.getItem('fi_wp_days'); if(_w) wpSaved = JSON.parse(_w); } catch(e){}
   var data = {
@@ -2223,16 +2402,17 @@ function exportJSON(){
 }
 
 function importJSON(input){
+  if(!guardAppReady('JSON-Import')) { input.value = ''; return; }
   var file = input.files[0]; if(!file) return;
   var r = new FileReader();
-  r.onload = function(e){
+  r.onload = async function(e){
     var raw = e.target.result;
     // Strip BOM if present
     if(raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
     var data;
     try { data = JSON.parse(raw); } catch(parseErr) { toast('JSON-Fehler: ' + parseErr.message.slice(0,60)); return; }
     try {
-      applyImportData(data);
+      await applyImportData(data);
       toast('✅ ' + S.skills.length + ' Skills, ' + (S.dungeons||[]).length + ' Dungeons geladen!');
     } catch(err) { toast('Import-Fehler: ' + err.message.slice(0,60)); }
   };
@@ -2985,10 +3165,10 @@ function applyConflictChoices(data){
   });
   return out;
 }
-function confirmConflictResolution(){
+async function confirmConflictResolution(){
   if(!_pendingConflicts) return;
   if(!_pendingConflicts._applyFn) return;
-  _pendingConflicts._applyFn();
+  await _pendingConflicts._applyFn();
 }
 
 function gistBuildPayload() {
@@ -3020,13 +3200,13 @@ function gistAutoSyncDebounced() {
 }
 
 function gistPush(force) {
-  gistSync(force ? 'push-force' : 'push', { silent:false });
+  return gistSync(force ? 'push-force' : 'push', { silent:false });
 }
 
-function gistDoPush(token, id, payloadObj, syncStamp) {
+async function gistDoPush(token, id, payloadObj, syncStamp) {
   var previous = S._lastExported || null;
   S._lastExported = syncStamp;
-  persistLocalOnly();
+  await persistLocalOnly();
   var payload = JSON.stringify(payloadObj || gistBuildPayload(), null, 2);
   return fetch('https://api.github.com/gists/' + id, {
     method: 'PATCH',
@@ -3040,21 +3220,23 @@ function gistDoPush(token, id, payloadObj, syncStamp) {
   })
   .catch(function(e){
     S._lastExported = previous;
-    persistLocalOnly();
-    console.error('[Sync Schritt 4/PATCH]', e);
-    setSyncStatus('fehler', 'PATCH fehlgeschlagen: ' + e.message);
-    toast('Sync Schritt 4 (PATCH) fehlgeschlagen: ' + e.message.slice(0,60));
+    return persistLocalOnly().then(function(){
+      console.error('[Sync Schritt 4/PATCH]', e);
+      setSyncStatus('fehler', 'PATCH fehlgeschlagen: ' + e.message);
+      toast('Sync Schritt 4 (PATCH) fehlgeschlagen: ' + e.message.slice(0,60));
+    });
   });
 }
 
 function gistPull(silent) {
-  gistSync('pull', { silent:!!silent });
+  return gistSync('pull', { silent:!!silent });
 }
 
 function gistMerge() {
-  gistSync('merge', { silent:false });
+  return gistSync('merge', { silent:false });
 }
-function gistSync(mode, opts){
+async function gistSync(mode, opts){
+  if(!guardAppReady('Gist-Sync')) return false;
   opts = opts || {};
   var silent = !!opts.silent;
   if(_syncInProgress){
@@ -3069,6 +3251,7 @@ function gistSync(mode, opts){
   }
   _syncInProgress = true;
   setSyncStatus('läuft', 'Sync gestartet ('+mode+')');
+  await persistLocalOnly();
   return fetch('https://api.github.com/gists/' + id, { headers: githubHeaders(token, false) })
     .then(function(r){ if(!r.ok) throw new Error('Schritt 1 (GET) HTTP ' + r.status); return r.json(); })
     .then(function(gist){
@@ -3079,7 +3262,7 @@ function gistSync(mode, opts){
       }
       return getFullGistFileText(file, token).then(function(text){ return { remote:file, text:text }; });
     })
-    .then(function(ctx){
+    .then(async function(ctx){
       var parsed = safeJsonParse(ctx.text || '{}');
       if(!parsed.ok){
         console.error('[Sync Schritt 2/JSON]', parsed.error);
@@ -3106,9 +3289,9 @@ function gistSync(mode, opts){
       if(conflicts.length && mode !== 'push-force'){
         console.error('[Sync Schritt 3/Merge] Konflikte erkannt:', conflicts);
         _pendingConflicts = conflicts;
-        _pendingConflicts._applyFn = function(){
+        _pendingConflicts._applyFn = async function(){
           var resolved = applyConflictChoices(merged);
-          applyImportData(resolved, {silent:true, skipSync:true});
+          await applyImportData(resolved, {silent:true, skipSync:true});
           clearConflictUI();
           setSyncStatus('merge', 'Konflikte manuell gelöst');
           if(!silent) toast('Konflikte angewendet.');
@@ -3119,13 +3302,13 @@ function gistSync(mode, opts){
         return false;
       }
       if(mode === 'pull'){
-        applyImportData(merged, {silent:true, skipSync:true});
+        await applyImportData(merged, {silent:true, skipSync:true});
         setSyncStatus('pull', 'Remote übernommen');
         if(!silent) toast('⬇️ Cloud geladen');
         return true;
       }
       if(didChange){
-        applyImportData(merged, {silent:true, skipSync:true});
+        await applyImportData(merged, {silent:true, skipSync:true});
       }
       if(needsPush){
         var syncStamp = new Date().toISOString();
@@ -3175,7 +3358,7 @@ function gistLoadSettings() {
   if(af) af.checked = gistGetAuto();
 }
 
-function applyImportData(data, opts) {
+async function applyImportData(data, opts) {
   opts = opts || {};
   if(!data || !Array.isArray(data.skills)) { toast('Ungültige Daten.'); return; }
   S.skills = (data.skills || []).map(normalizeSkillShape).filter(function(s){ return s && s.name; });
@@ -3189,6 +3372,7 @@ function applyImportData(data, opts) {
   Object.keys(S.dayTracker || {}).forEach(function(d){
     S.dayTracker[d] = dtEnsureEntryDefaults(S.dayTracker[d], d);
   });
+  normalizeState();
   if(data.wpDays && Array.isArray(data.wpDays) && data.wpDays.length){
     try { localStorage.setItem('fi_wp_days', JSON.stringify(data.wpDays)); } catch(e){}
     wpDays = data.wpDays;
@@ -3196,9 +3380,9 @@ function applyImportData(data, opts) {
   // wkInit first so wkDraw() is safe when save() refreshes the world map
   wkInit();
   if(!opts.skipSync){
-    save();
+    await save();
   } else {
-    persistLocalOnly();
+    await persistLocalOnly();
     updateStats(); renderTable(); renderTGrid(); updateFilters(); renderModes();
     if (typeof wkDraw === 'function') wkDraw();
     ihkRender();
@@ -3280,10 +3464,11 @@ function ihkSetStatus(id, status){
   ihkRender();
 }
 
-function ihkDelete(id){
+async function ihkDelete(id){
+  if(!guardAppReady('IHK-Bericht löschen')) return;
   if(!confirm('IHK-Bericht wirklich löschen?')) return;
   S.ihkReports = (S.ihkReports || []).filter(function(r){ return String(r.id) !== String(id); });
-  save();
+  await save();
   ihkRender();
 }
 
@@ -3414,9 +3599,11 @@ function mtFilter(f, btn){
 }
 
 function mtPersistOnly(){
-  persistLocalOnly();
+  if(!guardAppReady('Mitschrieb speichern')) return Promise.resolve(false);
+  var persisted = persistLocalOnly();
   updateSyncUI();
   gistAutoSyncDebounced();
+  return persisted;
 }
 
 function mtFindDayRow(dateStr){
@@ -4085,24 +4272,31 @@ function sidebarNav(tabId) {
 }
 
 async function initApp(){
-  load(); setStep(1); wkInit(); gistLoadSettings();
-  syncAbgleichDbModeControls();
-  // Restore Wochenkampagne
   try {
-    var _wpSaved = localStorage.getItem('fi_wp_days');
-    if(_wpSaved){
-      wpDays = JSON.parse(_wpSaved);
-      if(wpDays.length){
-        renderWpDays();
-        document.getElementById('wp-days-box').style.display = 'block';
+    await load(); setStep(1); wkInit(); gistLoadSettings();
+    syncAbgleichDbModeControls();
+    // Restore Wochenkampagne
+    try {
+      var _wpSaved = localStorage.getItem('fi_wp_days');
+      if(_wpSaved){
+        wpDays = JSON.parse(_wpSaved);
+        if(wpDays.length){
+          renderWpDays();
+          document.getElementById('wp-days-box').style.display = 'block';
+        }
       }
+    } catch(e){}
+    updateSyncUI();
+    setAppReady(true);
+    try {
+      await gistSync('auto', { silent:true, startup:true });
+    } catch(e){
+      console.error('[Startup Sync]', e);
     }
-  } catch(e){}
-  updateSyncUI();
-  try {
-    await gistSync('auto', { silent:true, startup:true });
   } catch(e){
-    console.error('[Startup Sync]', e);
+    console.error('[App/Initialisierung]', e);
+    var loading = document.getElementById('app-loading-overlay');
+    if(loading) loading.innerHTML = '<div class="notice">⚠️ App-Daten konnten nicht geladen werden. Bitte Seite neu laden und Konsole prüfen.</div>';
   }
 }
 initApp();
