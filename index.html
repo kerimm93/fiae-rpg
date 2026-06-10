@@ -765,9 +765,13 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
           <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
             <div>
               <label style="margin-bottom:4px;">GPT-Chat-Link</label>
-              <input type="text" id="mt-chat-url" placeholder="https://chat.openai.com/..." oninput="mtSaveChatUrl()">
+              <input type="text" id="mt-chat-url" placeholder="https://chat.openai.com/..." oninput="mtSaveChatUrl()" onchange="mtSaveChatUrlNow()">
+              <div id="mt-chat-url-status" style="font-size:12px;color:var(--ink-dim);margin-top:4px;">gespeichert</div>
             </div>
-            <button class="btn btn-sm btn-q" onclick="mtOpenChatUrl()">Link öffnen</button>
+            <div class="btn-row" style="margin-top:0;">
+              <button class="btn btn-sm btn-m" onclick="mtSaveChatUrlNow()">Link speichern</button>
+              <button class="btn btn-sm btn-q" onclick="mtOpenChatUrl()">Link öffnen</button>
+            </div>
           </div>
           <label style="margin-bottom:4px;">Screenshot-Dateipfade (eine Zeile pro Datei)</label>
           <textarea id="mt-screenshot-paths" rows="5" placeholder="C:\Users\UserS2025\Pictures\Screenshots\Screenshot 2026-04-14 093843.png" oninput="mtSaveScreenshotPaths()"></textarea>
@@ -3628,6 +3632,7 @@ function mtShowDetail(dateStr){
   document.getElementById('mt-screenshot-filter').value = mtGetExplorerFilterForDate(dateStr);
   document.getElementById('mt-screenshot-folder').value = mtGetScreenshotFolderName(dateStr, entry);
   document.getElementById('mt-chat-url').value = entry.screenshotChatUrl || '';
+  mtSetChatUrlStatus('gespeichert');
   document.getElementById('mt-screenshot-paths').value = entry.screenshotPathsRaw || '';
   document.getElementById('mt-screenshot-meta').textContent = 'Screenshots: ' + shotMeta.count + ' · GPT-Batches: ' + shotMeta.batches;
   document.getElementById('mt-screenshots-processed').checked = !!entry.screenshotsProcessed;
@@ -3974,17 +3979,48 @@ function mtSaveScreenshotPaths(){
   }, 250);
 }
 
+function mtSetChatUrlStatus(status){
+  var statusEl = document.getElementById('mt-chat-url-status');
+  if(!statusEl) return;
+  statusEl.textContent = status;
+  statusEl.style.color = status === 'gespeichert' ? 'var(--green)' : 'var(--gold)';
+}
+
 function mtSaveChatUrl(){
   if(!mtOpenDate) return;
-  var entry = dtGetOrCreate(mtOpenDate);
-  entry.screenshotChatUrl = (document.getElementById('mt-chat-url').value || '').trim();
+  var input = document.getElementById('mt-chat-url');
+  if(!input) return;
+  var dateStr = mtOpenDate;
+  var entry = dtGetOrCreate(dateStr);
+  entry.screenshotChatUrl = (input.value || '').trim();
   entry.updatedAt = new Date().toISOString();
+  mtSetChatUrlStatus('ungespeichert');
   if(mtSaveChatUrl._t) clearTimeout(mtSaveChatUrl._t);
-  mtSaveChatUrl._t = setTimeout(function(){ mtPersistOnly(); }, 250);
+  mtSaveChatUrl._t = setTimeout(function(){
+    mtSaveChatUrl._t = null;
+    mtPersistOnly();
+    if(mtOpenDate === dateStr) mtSetChatUrlStatus('gespeichert');
+  }, 250);
+}
+
+function mtSaveChatUrlNow(){
+  if(!mtOpenDate) return;
+  var input = document.getElementById('mt-chat-url');
+  if(!input) return;
+  var entry = dtGetOrCreate(mtOpenDate);
+  entry.screenshotChatUrl = (input.value || '').trim();
+  entry.updatedAt = new Date().toISOString();
+  if(mtSaveChatUrl._t){
+    clearTimeout(mtSaveChatUrl._t);
+    mtSaveChatUrl._t = null;
+  }
+  mtPersistOnly();
+  mtSetChatUrlStatus('gespeichert');
 }
 
 function mtOpenChatUrl(){
   if(!mtOpenDate) return;
+  mtSaveChatUrlNow();
   var entry = dtGetOrCreate(mtOpenDate);
   var raw = String(entry.screenshotChatUrl || '').trim();
   var md = raw.match(/^\[[^\]]+\]\(([^)]+)\)$/);
