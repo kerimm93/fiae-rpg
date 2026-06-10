@@ -354,6 +354,15 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
   font-family:var(--display);font-size:11px;color:var(--ink-light);
   border:1px solid var(--border);border-radius:999px;padding:2px 8px;
 }
+.mt-pipeline-done{ color:#2ecc71;border-color:rgba(46,204,113,0.35);background:rgba(46,204,113,0.1); }
+.mt-pipeline-open{ color:var(--gold-light);border-color:rgba(241,196,15,0.35);background:rgba(241,196,15,0.08); }
+.mt-pipeline-grid{ display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px; }
+.mt-pipeline-option{
+  display:flex;align-items:flex-start;gap:9px;padding:9px 10px;cursor:pointer;
+  border:1px solid var(--border);border-radius:7px;background:var(--surface-2);
+  font-family:var(--body);font-size:13px;color:var(--ink-light);line-height:1.35;
+}
+.mt-pipeline-option input{ width:auto;min-height:auto;margin-top:2px;flex-shrink:0; }
 </style>
 </head>
 
@@ -767,6 +776,11 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
             <input type="checkbox" id="mt-screenshots-processed" style="width:auto;min-height:auto;" onchange="mtToggleScreenshotsProcessed()">
             <span style="font-size:13px;color:var(--ink-light);font-weight:700;">Alle Screenshots verarbeitet</span>
           </label>
+        </div>
+        <div class="qs" style="margin-bottom:12px;">
+          <div class="qh"><span class="qi">🔄</span> Pipeline / Nachverarbeitung</div>
+          <div class="notice info">Diese externen Nachverarbeitungsschritte werden ausschließlich manuell gepflegt.</div>
+          <div id="mt-pipeline-grid" class="mt-pipeline-grid"></div>
         </div>
         <label style="font-family:var(--pixel);font-size:7px;color:var(--ink-light);display:block;margin-bottom:6px;">TAGEBUCH</label>
         <textarea id="mt-diary" rows="4" placeholder="Was habe ich heute gemacht, gelernt, bemerkt?" oninput="mtSaveDiary()"></textarea>
@@ -2667,6 +2681,30 @@ function wkAutoSetMastered(dungeonId){
 
 /* ─── DAY TRACKER HELPERS ─── */
 
+var DAY_TRACKER_PIPELINE_DEFAULTS = {
+  canvasCreated: false,
+  handoffCompleted: false,
+  notionDayCreated: false,
+  notionSubjectNotesCreated: false,
+  tasksTransferred: false,
+  skillsReturnedToFiaeRpg: false,
+  ankiCardsCreated: false,
+  ankiCardsImported: false,
+  ihkReportConsidered: false
+};
+
+var DAY_TRACKER_PIPELINE_FIELDS = [
+  { key:'canvasCreated', label:'Mitschrieb/Canvas erstellt' },
+  { key:'handoffCompleted', label:'Handoff abgeschlossen' },
+  { key:'notionDayCreated', label:'Unterrichtstag in Notion eingetragen' },
+  { key:'notionSubjectNotesCreated', label:'Fach-Mitschriebe in Notion eingetragen' },
+  { key:'tasksTransferred', label:'Aufgaben übertragen' },
+  { key:'skillsReturnedToFiaeRpg', label:'Skills zurück in FIAE-RPG importiert' },
+  { key:'ankiCardsCreated', label:'Anki-Karten erstellt' },
+  { key:'ankiCardsImported', label:'Anki-Karten in Anki hinzugefügt' },
+  { key:'ihkReportConsidered', label:'IHK-Bericht berücksichtigt' }
+];
+
 function dtGetOrCreate(dateStr){
   if(!S.dayTracker) S.dayTracker = {};
   if(!S.dayTracker[dateStr]){
@@ -2680,6 +2718,7 @@ function dtGetOrCreate(dateStr){
       screenshotPathsRaw: '',
       screenshotChatUrl: '',
       screenshotsProcessed: false,
+      pipeline: Object.assign({}, DAY_TRACKER_PIPELINE_DEFAULTS),
       diary: '',
       log: [],
       updatedAt: new Date().toISOString()
@@ -2700,6 +2739,10 @@ function dtEnsureEntryDefaults(entry, dateStr){
   if(typeof entry.screenshotPathsRaw !== 'string') entry.screenshotPathsRaw = '';
   if(typeof entry.screenshotChatUrl !== 'string') entry.screenshotChatUrl = '';
   if(typeof entry.screenshotsProcessed !== 'boolean') entry.screenshotsProcessed = !!entry.screenshotsProcessed;
+  if(!entry.pipeline || typeof entry.pipeline !== 'object' || Array.isArray(entry.pipeline)) entry.pipeline = {};
+  Object.keys(DAY_TRACKER_PIPELINE_DEFAULTS).forEach(function(key){
+    if(typeof entry.pipeline[key] !== 'boolean') entry.pipeline[key] = false;
+  });
   if(typeof entry.diary !== 'string') entry.diary = '';
   if(!Array.isArray(entry.log)) entry.log = [];
   if(!entry.updatedAt) entry.updatedAt = new Date().toISOString();
@@ -2878,6 +2921,11 @@ function mergeDayTracker(local, remote, conflicts){
       conflicts.push({ type:'dayTracker.screenshotsProcessed', key:date, local:l, remote:r, resolution:'local' });
     } else {
       next.screenshotsProcessed = Boolean(l.screenshotsProcessed) || Boolean(r.screenshotsProcessed);
+    }
+    if(JSON.stringify(l.pipeline) !== JSON.stringify(r.pipeline)){
+      conflicts.push({ type:'dayTracker.pipeline', key:date, local:l, remote:r, resolution:'local' });
+    } else {
+      next.pipeline = clone(l.pipeline);
     }
     var set = new Set((l.log||[]).concat(r.log||[]));
     next.log = Array.from(set);
@@ -3458,6 +3506,15 @@ function mtRender(){
       mtStatusDot(false,'Prompt'),mtStatusDot(false,'Mitschrieb'),mtStatusDot(false,'Extrahiert'),mtStatusDot(false,'Importiert')
     ].join('');
 
+    var pipeline = mtGetPipelineStatus(entry);
+    var pipelineChips = [
+      '<span class="mt-mini-chip ' + (pipeline.complete ? 'mt-pipeline-done' : 'mt-pipeline-open') + '">' + (pipeline.complete ? 'Pipeline fertig' : 'Pipeline offen') + '</span>'
+    ];
+    if(!pipeline.notionDone) pipelineChips.push('<span class="mt-mini-chip">Notion offen</span>');
+    if(!pipeline.ankiDone) pipelineChips.push('<span class="mt-mini-chip">Anki offen</span>');
+    if(!pipeline.ihkDone) pipelineChips.push('<span class="mt-mini-chip">IHK offen</span>');
+    if(!pipeline.tasksDone) pipelineChips.push('<span class="mt-mini-chip">Aufgaben offen</span>');
+
     var isOpen = mtOpenDate === d;
     return '<div class="mt-day-row ' + (isOpen?'mt-day-open':'') + '" data-mt-date="' + d + '" onclick="mtToggleDetail(\'' + d + '\')">' +
       '<div class="mt-day-header">' +
@@ -3470,6 +3527,7 @@ function mtRender(){
             (shotMeta.count ? '<span class="mt-mini-chip" title="Screenshots">📸 ' + shotMeta.count + '</span>' : '') +
             ((entry && entry.screenshotChatUrl && entry.screenshotChatUrl.trim()) ? '<span class="mt-mini-chip" title="GPT-Link hinterlegt">💬</span>' : '') +
             ((entry && entry.screenshotsProcessed) ? '<span class="mt-mini-chip" title="Screenshots verarbeitet">Screens fertig</span>' : '') +
+            pipelineChips.join('') +
           '</div>' +
         '</div>' +
         '<div class="mt-checks">' + p + '</div>' +
@@ -3483,6 +3541,18 @@ function mtRender(){
     detail.style.display = 'none';
   }
   ihkRenderPrio();
+}
+
+function mtGetPipelineStatus(entry){
+  var pipeline = entry && entry.pipeline && typeof entry.pipeline === 'object' ? entry.pipeline : {};
+  var complete = Object.keys(DAY_TRACKER_PIPELINE_DEFAULTS).every(function(key){ return pipeline[key] === true; });
+  return {
+    complete: complete,
+    notionDone: pipeline.notionDayCreated === true && pipeline.notionSubjectNotesCreated === true,
+    ankiDone: pipeline.ankiCardsCreated === true && pipeline.ankiCardsImported === true,
+    ihkDone: pipeline.ihkReportConsidered === true,
+    tasksDone: pipeline.tasksTransferred === true
+  };
 }
 
 function mtStatusDot(done, label){
@@ -3544,6 +3614,15 @@ function mtShowDetail(dateStr){
     return '<button class="btn btn-sm ' + (on?'btn-v':'') + '" style="' + (on?'':'background:var(--surface-2);color:var(--ink-light);') + '" onclick="mtToggleFlag(\'' + dateStr + '\',\'' + f.key + '\')">' + f.label + '</button>';
   }).join('');
 
+  var pipelineGrid = document.getElementById('mt-pipeline-grid');
+  pipelineGrid.innerHTML = DAY_TRACKER_PIPELINE_FIELDS.map(function(field){
+    return '<label class="mt-pipeline-option" for="mt-pipeline-' + field.key + '">' +
+      '<input type="checkbox" id="mt-pipeline-' + field.key + '" ' + (entry.pipeline[field.key] ? 'checked ' : '') +
+      'onchange="mtTogglePipeline(\'' + field.key + '\')">' +
+      '<span>' + field.label + '</span>' +
+    '</label>';
+  }).join('');
+
   // Diary
   document.getElementById('mt-diary').value = entry.diary || '';
   document.getElementById('mt-screenshot-filter').value = mtGetExplorerFilterForDate(dateStr);
@@ -3569,6 +3648,18 @@ function mtToggleFlag(dateStr, key){
   dtLog(dateStr, (entry[key] ? '✓ ' : '✗ ') + key.replace(/([A-Z])/g,' $1').toLowerCase());
   entry.updatedAt = new Date().toISOString();
   save();
+  mtRender();
+}
+
+function mtTogglePipeline(key){
+  if(!mtOpenDate || !Object.prototype.hasOwnProperty.call(DAY_TRACKER_PIPELINE_DEFAULTS, key)) return;
+  var entry = dtGetOrCreate(mtOpenDate);
+  var checkbox = document.getElementById('mt-pipeline-' + key);
+  entry.pipeline[key] = checkbox ? !!checkbox.checked : !entry.pipeline[key];
+  entry.updatedAt = new Date().toISOString();
+  var field = DAY_TRACKER_PIPELINE_FIELDS.find(function(item){ return item.key === key; });
+  dtLog(mtOpenDate, (entry.pipeline[key] ? '✓ ' : '✗ ') + (field ? field.label : key));
+  mtPersistOnly();
   mtRender();
 }
 
