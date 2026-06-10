@@ -363,16 +363,32 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
   font-family:var(--body);font-size:13px;color:var(--ink-light);line-height:1.35;
 }
 .mt-pipeline-option input{ width:auto;min-height:auto;margin-top:2px;flex-shrink:0; }
+
+/* APP STORAGE LOAD GUARD */
+#app-loading-overlay{
+  position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(8,10,22,0.88);backdrop-filter:blur(3px);
+}
+#app-loading-overlay .notice{
+  margin:0;max-width:420px;text-align:center;font-family:var(--display);font-size:16px;
+  color:var(--ink);border-color:var(--purple);box-shadow:0 8px 32px rgba(0,0,0,0.45);
+}
+body:not(.app-loading) #app-loading-overlay{display:none;}
+body.app-loading button,body.app-loading input,body.app-loading textarea,body.app-loading select{pointer-events:none;}
 </style>
 </head>
 
-<body>
+<body class="app-loading" aria-busy="true">
+
+<div id="app-loading-overlay" role="status" aria-live="polite">
+  <div class="notice">⏳ App-Daten werden geladen …</div>
+</div>
 
 <!-- SIDEBAR OVERLAY -->
 <div id="sidebar-overlay" onclick="closeSidebar()"></div>
 
 <!-- SIDEBAR -->
-<div id="sidebar">
+<div id="sidebar" inert>
   <div class="sidebar-header">
     <span class="title">SKILL TRACKER</span>
     <button class="sidebar-close" onclick="closeSidebar()">✕</button>
@@ -380,7 +396,7 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
   <nav class="sidebar-nav" id="sidebar-nav-items"></nav>
 </div>
 
-<div id="app">
+<div id="app" inert>
 
   <header>
     <button class="hamburger" onclick="openSidebar()" aria-label="Menu">
@@ -1025,6 +1041,7 @@ var STORAGE_FALLBACK_KEY = 'fi_rpg_storage_fallback';
 var _dbPromise = null;
 var _dbWriteQueue = Promise.resolve();
 var _storageWarningShown = false;
+var _appReady = false;
 var GIST_TOKEN_KEY = 'fi_gist_token';
 var GIST_ID_KEY    = 'fi_gist_id';
 var GIST_AUTO_KEY  = 'fi_gist_auto';
@@ -1143,7 +1160,32 @@ function normalizeState(){
   return S;
 }
 
+function appCanMutate(){
+  return _appReady === true;
+}
+
+function guardAppReady(action){
+  if(appCanMutate()) return true;
+  console.warn('[App/Loading] Aktion vor abgeschlossenem Storage-Load blockiert' + (action ? ': ' + action : ''));
+  if(typeof toast === 'function') toast('⏳ App-Daten werden noch geladen …');
+  return false;
+}
+
+function setAppReady(ready){
+  _appReady = ready === true;
+  if(typeof document === 'undefined' || !document.body) return;
+  document.body.classList.toggle('app-loading', !_appReady);
+  document.body.setAttribute('aria-busy', _appReady ? 'false' : 'true');
+  ['app', 'sidebar'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(!el) return;
+    if(_appReady) el.removeAttribute('inert');
+    else el.setAttribute('inert', '');
+  });
+}
+
 function persistLocalOnly(){
+  if(!guardAppReady('Speichern')) return Promise.resolve(false);
   var snapshot;
   try { snapshot = JSON.parse(JSON.stringify(S)); }
   catch(e) { warnStorage(e, 'Serialisieren'); return Promise.resolve(false); }
@@ -1168,6 +1210,7 @@ function persistLocalOnly(){
 }
 
 function save(){
+  if(!guardAppReady('Speichern')) return Promise.resolve(false);
   var persisted = persistLocalOnly();
   updateStats();
   renderTable();
@@ -2172,6 +2215,7 @@ function savePrefs(){
   save(); toast('✓ Gespeichert!');
 }
 async function resetData(){
+  if(!guardAppReady('Daten zurücksetzen')) return;
   if(!confirm('Wirklich alle Daten und custom Modi löschen?')) return;
   S.skills=[]; S.modes=[]; S.dayTracker={};
   wkInit();
@@ -2358,6 +2402,7 @@ async function exportJSON(){
 }
 
 function importJSON(input){
+  if(!guardAppReady('JSON-Import')) { input.value = ''; return; }
   var file = input.files[0]; if(!file) return;
   var r = new FileReader();
   r.onload = async function(e){
@@ -3191,6 +3236,7 @@ function gistMerge() {
   return gistSync('merge', { silent:false });
 }
 async function gistSync(mode, opts){
+  if(!guardAppReady('Gist-Sync')) return false;
   opts = opts || {};
   var silent = !!opts.silent;
   if(_syncInProgress){
@@ -3419,6 +3465,7 @@ function ihkSetStatus(id, status){
 }
 
 async function ihkDelete(id){
+  if(!guardAppReady('IHK-Bericht löschen')) return;
   if(!confirm('IHK-Bericht wirklich löschen?')) return;
   S.ihkReports = (S.ihkReports || []).filter(function(r){ return String(r.id) !== String(id); });
   await save();
@@ -3552,6 +3599,7 @@ function mtFilter(f, btn){
 }
 
 function mtPersistOnly(){
+  if(!guardAppReady('Mitschrieb speichern')) return Promise.resolve(false);
   var persisted = persistLocalOnly();
   updateSyncUI();
   gistAutoSyncDebounced();
@@ -4224,24 +4272,31 @@ function sidebarNav(tabId) {
 }
 
 async function initApp(){
-  await load(); setStep(1); wkInit(); gistLoadSettings();
-  syncAbgleichDbModeControls();
-  // Restore Wochenkampagne
   try {
-    var _wpSaved = localStorage.getItem('fi_wp_days');
-    if(_wpSaved){
-      wpDays = JSON.parse(_wpSaved);
-      if(wpDays.length){
-        renderWpDays();
-        document.getElementById('wp-days-box').style.display = 'block';
+    await load(); setStep(1); wkInit(); gistLoadSettings();
+    syncAbgleichDbModeControls();
+    // Restore Wochenkampagne
+    try {
+      var _wpSaved = localStorage.getItem('fi_wp_days');
+      if(_wpSaved){
+        wpDays = JSON.parse(_wpSaved);
+        if(wpDays.length){
+          renderWpDays();
+          document.getElementById('wp-days-box').style.display = 'block';
+        }
       }
+    } catch(e){}
+    updateSyncUI();
+    setAppReady(true);
+    try {
+      await gistSync('auto', { silent:true, startup:true });
+    } catch(e){
+      console.error('[Startup Sync]', e);
     }
-  } catch(e){}
-  updateSyncUI();
-  try {
-    await gistSync('auto', { silent:true, startup:true });
   } catch(e){
-    console.error('[Startup Sync]', e);
+    console.error('[App/Initialisierung]', e);
+    var loading = document.getElementById('app-loading-overlay');
+    if(loading) loading.innerHTML = '<div class="notice">⚠️ App-Daten konnten nicht geladen werden. Bitte Seite neu laden und Konsole prüfen.</div>';
   }
 }
 initApp();

@@ -117,6 +117,7 @@ async function testLegacyKey(key) {
 async function testWriteQueue() {
   const { context, localStorage, stores } = createHarness();
   context.S = legacyState(2);
+  context._appReady = true;
   const first = context.persistLocalOnly();
   context.S.skills[0].level = 4;
   const second = context.persistLocalOnly();
@@ -127,6 +128,25 @@ async function testWriteQueue() {
   assert.equal(localStorage.getItem('fi_rpg_v4'), null);
 }
 
+
+async function testWritesBlockedBeforeReady() {
+  const { context, localStorage, stores } = createHarness();
+  context.console = { error() {}, warn() {}, log() {} };
+  let renderCalls = 0;
+  context.updateStats = () => { renderCalls += 1; };
+  context.S = legacyState(0);
+
+  const directPersist = await context.persistLocalOnly();
+  const savePersist = await context.save();
+
+  assert.equal(context._appReady, false);
+  assert.equal(directPersist, false);
+  assert.equal(savePersist, false);
+  assert.equal(renderCalls, 0);
+  assert.equal(stores.has('appState'), false);
+  assert.equal(localStorage.getItem('fi_rpg_v4'), null);
+  assert.equal(localStorage.getItem('fi_rpg_storage_fallback'), null);
+}
 
 function testCredentialsStaySeparate() {
   const { context, localStorage } = createHarness();
@@ -145,6 +165,7 @@ function testCredentialsStaySeparate() {
 async function testEmergencyFallback() {
   const { context, localStorage } = createHarness({ disableIndexedDB: true });
   context.S = legacyState(3);
+  context._appReady = true;
   context.console = { error() {}, warn() {}, log() {} };
 
   const persisted = await context.persistLocalOnly();
@@ -159,9 +180,10 @@ async function testEmergencyFallback() {
   await testLegacyKey('fi_rpg3');
   await testLegacyKey('fi_rpg2');
   await testWriteQueue();
+  await testWritesBlockedBeforeReady();
   testCredentialsStaySeparate();
   await testEmergencyFallback();
-  console.log('OK: IndexedDB migration, normalization, write queue and fallback');
+  console.log('OK: IndexedDB migration, normalization, ready guard, write queue and fallback');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;
