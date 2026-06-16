@@ -162,6 +162,60 @@ function testCredentialsStaySeparate() {
   assert.equal(JSON.stringify(payload).includes('secret-token'), false);
 }
 
+
+function testPipelineDefaultsDoNotUseLegacyFlags() {
+  const { context } = createHarness();
+  const entry = context.dtEnsureEntryDefaults({
+    notesDone: true,
+    skillsExtracted: true,
+    skillsImported: true,
+    promptCopied: true,
+    screenshotsProcessed: true
+  }, '11.06.2026');
+
+  assert.equal(entry.notesDone, true);
+  assert.equal(entry.skillsExtracted, true);
+  assert.equal(entry.skillsImported, true);
+  assert.equal(entry.pipeline.canvasCreated, false);
+  assert.equal(entry.pipeline.handoffCompleted, false);
+  assert.equal(entry.pipeline.skillsReturnedToFiaeRpg, false);
+  assert.ok(Object.values(entry.pipeline).every(value => value === false));
+}
+
+async function testImportNormalizesAndPreservesPipeline() {
+  const { context } = createHarness();
+  context._appReady = true;
+  context.wkInit = () => {};
+  context.save = async () => true;
+  context.persistLocalOnly = async () => true;
+  context.wpDays = [];
+
+  await context.applyImportData({
+    skills: [{ id: 's1', name: 'Import-Test', level: 1 }],
+    dayTracker: {
+      '12.06.2026': {
+        notesDone: true,
+        skillsExtracted: true,
+        skillsImported: true
+      },
+      '13.06.2026': {
+        pipeline: {
+          notionDayCreated: true,
+          ankiCardsImported: true,
+          skillsReturnedToFiaeRpg: true
+        }
+      }
+    }
+  }, { skipSync: true });
+
+  assert.equal(context.S.dayTracker['12.06.2026'].pipeline.skillsReturnedToFiaeRpg, false);
+  assert.equal(context.S.dayTracker['12.06.2026'].pipeline.notionDayCreated, false);
+  assert.equal(context.S.dayTracker['13.06.2026'].pipeline.notionDayCreated, true);
+  assert.equal(context.S.dayTracker['13.06.2026'].pipeline.ankiCardsImported, true);
+  assert.equal(context.S.dayTracker['13.06.2026'].pipeline.skillsReturnedToFiaeRpg, true);
+  assert.equal(context.S.dayTracker['13.06.2026'].pipeline.canvasCreated, false);
+}
+
 async function testEmergencyFallback() {
   const { context, localStorage } = createHarness({ disableIndexedDB: true });
   context.S = legacyState(3);
@@ -181,9 +235,11 @@ async function testEmergencyFallback() {
   await testLegacyKey('fi_rpg2');
   await testWriteQueue();
   await testWritesBlockedBeforeReady();
+  testPipelineDefaultsDoNotUseLegacyFlags();
+  await testImportNormalizesAndPreservesPipeline();
   testCredentialsStaySeparate();
   await testEmergencyFallback();
-  console.log('OK: IndexedDB migration, normalization, ready guard, write queue and fallback');
+  console.log('OK: IndexedDB migration, normalization, ready guard, write queue, pipeline defaults and fallback');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;
