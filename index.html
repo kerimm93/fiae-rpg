@@ -349,6 +349,11 @@ input[type="checkbox"]{width:auto;min-height:auto;margin-right:6px;}
 .mt-dot-todo{ color:var(--ink-dim); }
 .mt-dot-label{ font-size:11px; }
 .mt-mini-meta{ display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
+.mt-filter-row{ align-items:center;gap:6px; }
+.mt-day-main{ display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0; }
+.mt-mini-warn{ color:var(--gold-light);border-color:rgba(241,196,15,0.35);background:rgba(241,196,15,0.06); }
+.mt-ihk-box summary{ cursor:pointer;list-style:none; }
+.mt-ihk-box summary::-webkit-details-marker{ display:none; }
 .mt-mini-chip{
   display:inline-flex;align-items:center;gap:4px;
   font-family:var(--display);font-size:11px;color:var(--ink-light);
@@ -724,17 +729,27 @@ body.app-loading button,body.app-loading input,body.app-loading textarea,body.ap
       <div class="qs">
         <div class="qh"><span class="qi">📋</span> Mitschrieb-Tracker</div>
         <div class="notice info">Alle bekannten Unterrichtstage und ihr Bearbeitungsstand. Tage werden automatisch beim Import aus der Weltenkarte angelegt.</div>
-        <div class="btn-row" style="margin-bottom:4px;">
+        <div class="btn-row mt-filter-row" style="margin-bottom:4px;">
           <button class="fp active" id="mt-f-alle"    onclick="mtFilter('alle',this)">Alle</button>
           <button class="fp"        id="mt-f-offen"   onclick="mtFilter('offen',this)">Offen</button>
           <button class="fp"        id="mt-f-inarbeit" onclick="mtFilter('inarbeit',this)">In Arbeit</button>
           <button class="fp"        id="mt-f-fertig"  onclick="mtFilter('fertig',this)">Fertig</button>
           <button class="fp"        id="mt-f-ihk"     onclick="mtFilter('ihk',this)">📑 IHK-relevant</button>
+          <button class="fp"        id="mt-f-pipeline-offen" onclick="mtFilter('pipeline-offen',this)">Pipeline offen</button>
+          <button class="fp"        id="mt-f-pipeline-fertig" onclick="mtFilter('pipeline-fertig',this)">Pipeline fertig</button>
+          <button class="fp"        id="mt-f-notion-offen" onclick="mtFilter('notion-offen',this)">Notion offen</button>
+          <button class="fp"        id="mt-f-anki-offen" onclick="mtFilter('anki-offen',this)">Anki offen</button>
+          <button class="fp"        id="mt-f-aufgaben-offen" onclick="mtFilter('aufgaben-offen',this)">Aufgaben offen</button>
+          <button class="fp"        id="mt-f-handoff-offen" onclick="mtFilter('handoff-offen',this)">Handoff offen</button>
+          <button class="fp"        id="mt-f-chat-fehlt" onclick="mtFilter('chat-fehlt',this)">Chat-Link fehlt</button>
+          <button class="fp"        id="mt-f-screenshots-offen" onclick="mtFilter('screenshots-offen',this)">Screenshots offen</button>
+          <button class="fp"        id="mt-f-keine-dungeons" onclick="mtFilter('keine-dungeons',this)">keine Dungeons</button>
         </div>
       </div>
 
-      <div class="qs">
-        <div class="qh"><span class="qi">📑</span> Offene IHK-Berichte</div>
+      <details class="qs mt-ihk-box">
+        <summary class="qh"><span class="qi">📑</span> Offene IHK-Berichte</summary>
+        <div class="notice info" style="margin:8px 0;">Offene IHK-Berichte = Berichtsheft-/IHK-Backlog. Der Pipeline-Haken „IHK-Bericht berücksichtigt“ bedeutet: Dieser Unterrichtstag wurde beim IHK-Kontext beachtet.</div>
         <div style="display:grid;grid-template-columns:2fr 1fr 1fr 130px 2fr auto;gap:8px;align-items:end;">
           <input type="text" id="ihk-title" placeholder="Titel">
           <input type="text" id="ihk-period" placeholder="Zeitraum / KW">
@@ -748,7 +763,7 @@ body.app-loading button,body.app-loading input,body.app-loading textarea,body.ap
           <button class="btn btn-v btn-sm" onclick="ihkAdd()">+ Bericht</button>
         </div>
         <div id="ihk-list"></div>
-      </div>
+      </details>
 
       <div id="ihk-prio"></div>
 
@@ -3616,6 +3631,47 @@ function mtFindDayRow(dateStr){
   return null;
 }
 
+function mtIsChatMissing(entry){
+  return !(entry && typeof entry.screenshotChatUrl === 'string' && entry.screenshotChatUrl.trim());
+}
+
+function mtHasOpenScreenshots(entry){
+  return mtGetScreenshotMeta(entry ? entry.screenshotPathsRaw : '').count > 0 && !(entry && entry.screenshotsProcessed === true);
+}
+
+function mtHasDungeonAssignment(dateStr, entry){
+  if(entry && Array.isArray(entry.dungeonIds) && entry.dungeonIds.filter(Boolean).length) return true;
+  return mtGetDayDungeonNames(dateStr).length > 0;
+}
+
+function mtGetOpenPipelineLabels(entry){
+  var pipeline = mtGetPipelineStatus(entry);
+  var labels = [];
+  if(!pipeline.notionDone) labels.push('Notion offen');
+  if(!pipeline.ankiDone) labels.push('Anki offen');
+  if(!pipeline.tasksDone) labels.push('Aufgaben offen');
+  if(!pipeline.handoffDone) labels.push('Handoff offen');
+  return labels;
+}
+
+function mtMatchesFilter(dateStr, entry, filter){
+  var status = dtGetStatus(entry);
+  var pipeline = mtGetPipelineStatus(entry);
+  if(filter === 'alle') return true;
+  if(filter === 'offen' || filter === 'inarbeit' || filter === 'fertig') return status === filter;
+  if(filter === 'ihk') return ihkDateHasMatch(dateStr);
+  if(filter === 'pipeline-offen') return pipeline.complete !== true;
+  if(filter === 'pipeline-fertig') return pipeline.complete === true;
+  if(filter === 'notion-offen') return pipeline.notionDone !== true;
+  if(filter === 'anki-offen') return pipeline.ankiDone !== true;
+  if(filter === 'aufgaben-offen') return pipeline.tasksDone !== true;
+  if(filter === 'handoff-offen') return pipeline.handoffDone !== true;
+  if(filter === 'chat-fehlt') return mtIsChatMissing(entry);
+  if(filter === 'screenshots-offen') return mtHasOpenScreenshots(entry);
+  if(filter === 'keine-dungeons') return !mtHasDungeonAssignment(dateStr, entry);
+  return true;
+}
+
 function mtRender(){
   var list = document.getElementById('mt-list');
   var detail = document.getElementById('mt-detail');
@@ -3652,10 +3708,7 @@ function mtRender(){
 
   var filtered = dates.filter(function(d){
     var entry = S.dayTracker && S.dayTracker[d];
-    var status = dtGetStatus(entry);
-    if(mtCurrentFilter === 'alle') return true;
-    if(mtCurrentFilter === 'ihk') return ihkDateHasMatch(d);
-    return status === mtCurrentFilter;
+    return mtMatchesFilter(d, entry, mtCurrentFilter);
   });
   if(mtOpenDate && filtered.indexOf(mtOpenDate) === -1){
     mtOpenDate = null;
@@ -3670,7 +3723,7 @@ function mtRender(){
   }
 
   list.innerHTML = filtered.map(function(d){
-    var entry = (S.dayTracker && S.dayTracker[d]) ? dtEnsureEntryDefaults(S.dayTracker[d], d) : null;
+    var entry = (S.dayTracker && S.dayTracker[d]) ? S.dayTracker[d] : null;
     var status = dtGetStatus(entry);
     var shotMeta = mtGetScreenshotMeta(entry ? entry.screenshotPathsRaw : '');
 
@@ -3701,15 +3754,17 @@ function mtRender(){
     var pipelineChips = [
       '<span class="mt-mini-chip ' + (pipeline.complete ? 'mt-pipeline-done' : 'mt-pipeline-open') + '">' + (pipeline.complete ? 'Pipeline fertig' : 'Pipeline offen') + '</span>'
     ];
-    if(!pipeline.notionDone) pipelineChips.push('<span class="mt-mini-chip">Notion offen</span>');
-    if(!pipeline.ankiDone) pipelineChips.push('<span class="mt-mini-chip">Anki offen</span>');
-    if(!pipeline.ihkDone) pipelineChips.push('<span class="mt-mini-chip">IHK offen</span>');
-    if(!pipeline.tasksDone) pipelineChips.push('<span class="mt-mini-chip">Aufgaben offen</span>');
+    mtGetOpenPipelineLabels(entry).forEach(function(label){
+      pipelineChips.push('<span class="mt-mini-chip mt-mini-warn">' + label + '</span>');
+    });
+    if(mtIsChatMissing(entry)) pipelineChips.push('<span class="mt-mini-chip mt-mini-warn">Chat fehlt</span>');
+    if(mtHasOpenScreenshots(entry)) pipelineChips.push('<span class="mt-mini-chip mt-mini-warn">Screens offen</span>');
+    if(!mtHasDungeonAssignment(d, entry)) pipelineChips.push('<span class="mt-mini-chip mt-mini-warn">Kein Dungeon</span>');
 
     var isOpen = mtOpenDate === d;
     return '<div class="mt-day-row ' + (isOpen?'mt-day-open':'') + '" data-mt-date="' + d + '" onclick="mtToggleDetail(\'' + d + '\')">' +
       '<div class="mt-day-header">' +
-        '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div class="mt-day-main">' +
           '<div class="mt-status-pill ' + statusClass + '">' + statusLabel + '</div>' +
           '<div style="font-family:var(--display);font-size:17px;font-weight:700;">' + d + '</div>' +
           (dungeonNames.length ? '<div style="font-size:13px;color:var(--ink-light);">' + dungeonNames.map(esc).join(' · ') + '</div>' : '') +
@@ -3742,7 +3797,8 @@ function mtGetPipelineStatus(entry){
     notionDone: pipeline.notionDayCreated === true && pipeline.notionSubjectNotesCreated === true,
     ankiDone: pipeline.ankiCardsCreated === true && pipeline.ankiCardsImported === true,
     ihkDone: pipeline.ihkReportConsidered === true,
-    tasksDone: pipeline.tasksTransferred === true
+    tasksDone: pipeline.tasksTransferred === true,
+    handoffDone: pipeline.handoffCompleted === true
   };
 }
 
